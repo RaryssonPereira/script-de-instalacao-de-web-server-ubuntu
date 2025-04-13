@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# -------------------------------
+# Script de Instalação Base para Servidores Linux
+# Criado por: Rarysson 💻
+# Finalidade: Automatizar a configuração inicial de servidores web
+# -------------------------------
+
+# === VARIÁVEIS GLOBAIS ===
+LOG_EXEC="/etc/log_instalacao_base"
+IP_SERVIDOR=$(curl -s https://api.ipify.org)
+REVERSO=$(host "$IP_SERVIDOR" | awk '/pointer/ {print $5}' | sed 's/\.$//')
+PADRAO_HOSTNAME=""
+[ -n "$REVERSO" ] && PADRAO_HOSTNAME=$(echo "$REVERSO" | cut -d'.' -f1)
+
+# === FUNÇÕES UTILITÁRIAS ===
+
+verifica_execucao_anterior() {
+    if [ -f "$LOG_EXEC" ]; then
+        echo "⚠️ Este script já foi executado em: $(cat $LOG_EXEC)"
+        echo "Abortando para evitar duplicação."
+        exit 1
+    fi
+}
+
+obter_hostname() {
+    echo ""
+    echo "🖥️  CONFIGURAÇÃO DO HOSTNAME"
+    echo "IP público detectado: $IP_SERVIDOR"
+    echo "Reverso PTR detectado: $REVERSO"
+
+    if [ -n "$PADRAO_HOSTNAME" ]; then
+        echo "Sugestão de hostname baseado no reverso: $PADRAO_HOSTNAME"
+        read -p "Digite o novo hostname ou pressione ENTER para usar '$PADRAO_HOSTNAME': " newhostname
+        newhostname=${newhostname:-$PADRAO_HOSTNAME}
+    else
+        read -p "Nenhum padrão detectado. Digite o hostname desejado (ex: srv001): " newhostname
+        while [ -z "$newhostname" ]; do
+            echo "⚠️  Por favor, digite um hostname válido."
+            read newhostname
+        done
+    fi
+
+    echo "🔧 Aplicando hostname: $newhostname"
+    hostnamectl set-hostname "$newhostname"
+    echo "$newhostname" > /etc/hostname
+}
+
+pergunta_sim_nao() {
+    local pergunta="$1"
+    local resposta=""
+    while [[ "$resposta" != "S" && "$resposta" != "N" ]]; do
+        read -p "$pergunta (S/N): " resposta
+        resposta=$(echo "$resposta" | tr 'a-z' 'A-Z')
+    done
+    echo "$resposta"
+}
+
+instalar_nginx() {
+    echo ""
+    echo "🌐 INSTALAÇÃO DO NGINX"
+    local resposta=$(pergunta_sim_nao "Deseja instalar o NGINX?")
+    if [ "$resposta" == "S" ]; then
+        apt update && apt install -y nginx
+        echo "✅ NGINX instalado com sucesso."
+        configurar_projeto_web
+    else
+        echo "⏭️  Pulando a instalação do NGINX."
+    fi
+}
+
+configurar_projeto_web() {
+    echo ""
+    read -p "Deseja configurar um projeto web? (Digite o nome ou N para pular): " projectname
+
+    if [[ "$projectname" != "N" && "$projectname" != "n" && -n "$projectname" ]]; then
+        read -p "Digite o domínio principal do projeto (ex: exemplo.com): " domainname
+        while [ -z "$domainname" ]; do
+            echo "⚠️  Domínio não pode ser vazio."
+            read domainname
+        done
+        echo "🔧 Projeto '$projectname' com domínio '$domainname' será configurado posteriormente..."
+        # Aqui podemos incluir a lógica de criação do bloco de host NGINX, certificados SSL, etc.
+    else
+        echo "⏭️  Nenhum projeto configurado nesta etapa."
+    fi
+}
+
+registrar_execucao() {
+    echo "📝 Registrando execução do script..."
+    date "+%Y-%m-%d %H:%M:%S" > "$LOG_EXEC"
+    echo "✔️  Registro salvo em $LOG_EXEC"
+}
+
+# === FLUXO PRINCIPAL ===
+
+clear
+echo "==============================="
+echo "💡 Script de Instalação Base"
+echo "==============================="
+
+verifica_execucao_anterior
+obter_hostname
+instalar_nginx
+registrar_execucao
+
+echo ""
+echo "🎉 Instalação base concluída!"
