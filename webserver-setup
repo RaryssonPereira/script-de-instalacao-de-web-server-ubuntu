@@ -1,108 +1,99 @@
 #!/bin/bash
 
-# -------------------------------
-# Script de Instalação Base para Servidores Linux
-# Criado por: Rarysson 💻
-# Finalidade: Automatizar a configuração inicial de servidores web
-# -------------------------------
+set -euo pipefail
 
-# === VARIÁVEIS GLOBAIS ===
-LOG_EXEC="/etc/log_instalacao_base"
-IP_SERVIDOR=$(curl -s https://api.ipify.org)
-REVERSO=$(host "$IP_SERVIDOR" | awk '/pointer/ {print $5}' | sed 's/\.$//')
-PADRAO_HOSTNAME=""
-[ -n "$REVERSO" ] && PADRAO_HOSTNAME=$(echo "$REVERSO" | cut -d'.' -f1)
+LOG_FILE="/var/log/setup_base.log"
 
-# === FUNÇÕES UTILITÁRIAS ===
+# Verifica execução prévia
+if [ -f "$LOG_FILE" ]; then
+    echo "Script já executado em: $(cat $LOG_FILE). Saindo..."
+    exit
+fi
 
-verifica_execucao_anterior() {
-    if [ -f "$LOG_EXEC" ]; then
-        echo "⚠️ Este script já foi executado em: $(cat $LOG_EXEC)"
-        echo "Abortando para evitar duplicação."
-        exit 1
+# Funções
+configure_hostname() {
+    IP_SERVER=$(curl -s https://api.ipify.org)
+    REVERSE_HOSTNAME=$(host "$IP_SERVER" | awk '/pointer/ {print $5}' | sed 's/\.$//')
+
+    echo "Hostname atual: $(hostname)"
+    echo "Hostname reverso detectado: $REVERSE_HOSTNAME"
+    read -p "Digite o novo hostname (ou N para não alterar): " NEW_HOSTNAME
+
+    if [[ "$NEW_HOSTNAME" != "N" && "$NEW_HOSTNAME" != "n" ]]; then
+        hostnamectl set-hostname "$NEW_HOSTNAME"
+        echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts
     fi
 }
 
-obter_hostname() {
-    echo ""
-    echo "🖥️  CONFIGURAÇÃO DO HOSTNAME"
-    echo "IP público detectado: $IP_SERVIDOR"
-    echo "Reverso PTR detectado: $REVERSO"
-
-    if [ -n "$PADRAO_HOSTNAME" ]; then
-        echo "Sugestão de hostname baseado no reverso: $PADRAO_HOSTNAME"
-        read -p "Digite o novo hostname ou pressione ENTER para usar '$PADRAO_HOSTNAME': " newhostname
-        newhostname=${newhostname:-$PADRAO_HOSTNAME}
-    else
-        read -p "Nenhum padrão detectado. Digite o hostname desejado (ex: srv001): " newhostname
-        while [ -z "$newhostname" ]; do
-            echo "⚠️  Por favor, digite um hostname válido."
-            read newhostname
-        done
-    fi
-
-    echo "🔧 Aplicando hostname: $newhostname"
-    hostnamectl set-hostname "$newhostname"
-    echo "$newhostname" > /etc/hostname
-}
-
-pergunta_sim_nao() {
-    local pergunta="$1"
-    local resposta=""
-    while [[ "$resposta" != "S" && "$resposta" != "N" ]]; do
-        read -p "$pergunta (S/N): " resposta
-        resposta=$(echo "$resposta" | tr 'a-z' 'A-Z')
+ask_install() {
+    local package=$1
+    local var=$2
+    read -p "Instalar $package? (S/N): " answer
+    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
+    while [[ "$answer" != "S" && "$answer" != "N" ]]; do
+        echo "Resposta inválida. Digite S ou N."
+        read -p "Instalar $package? (S/N): " answer
+        answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
     done
-    echo "$resposta"
+    eval $var="$answer"
 }
 
-instalar_nginx() {
-    echo ""
-    echo "🌐 INSTALAÇÃO DO NGINX"
-    local resposta=$(pergunta_sim_nao "Deseja instalar o NGINX?")
-    if [ "$resposta" == "S" ]; then
-        apt update && apt install -y nginx
-        echo "✅ NGINX instalado com sucesso."
-        configurar_projeto_web
-    else
-        echo "⏭️  Pulando a instalação do NGINX."
-    fi
+install_packages() {
+    echo "Atualizando pacotes básicos..."
+    apt-get update -qq && apt-get install -qq -y software-properties-common debconf-utils htop curl git vim bc ntpdate jq
+
+    timedatectl set-timezone America/Sao_Paulo
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8
+
+    [[ "$INSTALL_NGINX" == "S" ]] && apt-get install -qq -y nginx
+    [[ "$INSTALL_PHP" == "S" ]] && apt-get install -qq -y php8.2-fpm php8.2-mysql php8.2-curl php8.2-gd php8.2-mbstring php8.2-redis php8.2-xml php8.2-soap php8.2-zip
+    [[ "$INSTALL_MYSQL" == "S" ]] && apt-get install -qq -y percona-server-server-5.7 mysqltuner percona-toolkit mytop
+    [[ "$INSTALL_REDIS" == "S" ]] && apt-get install -qq -y redis-server
+    [[ "$INSTALL_ELASTIC" == "S" ]] && apt-get install -qq -y openjdk-11-jre elasticsearch
+    [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
 }
 
-configurar_projeto_web() {
-    echo ""
-    read -p "Deseja configurar um projeto web? (Digite o nome ou N para pular): " projectname
-
-    if [[ "$projectname" != "N" && "$projectname" != "n" && -n "$projectname" ]]; then
-        read -p "Digite o domínio principal do projeto (ex: exemplo.com): " domainname
-        while [ -z "$domainname" ]; do
-            echo "⚠️  Domínio não pode ser vazio."
-            read domainname
-        done
-        echo "🔧 Projeto '$projectname' com domínio '$domainname' será configurado posteriormente..."
-        # Aqui podemos incluir a lógica de criação do bloco de host NGINX, certificados SSL, etc.
-    else
-        echo "⏭️  Nenhum projeto configurado nesta etapa."
-    fi
+configure_ssh() {
+    sed -i 's/#Port 22/Port 51439/' /etc/ssh/sshd_config
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    systemctl restart ssh
 }
 
-registrar_execucao() {
-    echo "📝 Registrando execução do script..."
-    date "+%Y-%m-%d %H:%M:%S" > "$LOG_EXEC"
-    echo "✔️  Registro salvo em $LOG_EXEC"
+optimize_sysctl() {
+cat <<EOF >> /etc/sysctl.conf
+net.ipv4.ip_local_port_range=1025 64000
+net.ipv4.tcp_fin_timeout=6
+net.ipv4.tcp_max_syn_backlog=65536
+net.core.somaxconn=16384
+net.ipv6.conf.all.disable_ipv6=1
+EOF
+sysctl -p
 }
 
-# === FLUXO PRINCIPAL ===
+install_monitoring() {
+    wget https://repo.zabbix.com/zabbix/5.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_5.0-1+focal_all.deb
+    dpkg -i zabbix-release_5.0-1+focal_all.deb
+    apt update && apt install -y zabbix-agent
+    systemctl enable --now zabbix-agent
+}
 
-clear
-echo "==============================="
-echo "💡 Script de Instalação Base"
-echo "==============================="
+# Execução do script
+configure_hostname
 
-verifica_execucao_anterior
-obter_hostname
-instalar_nginx
-registrar_execucao
+ask_install "NGINX" INSTALL_NGINX
+ask_install "PHP" INSTALL_PHP
+ask_install "MySQL (Percona)" INSTALL_MYSQL
+ask_install "Redis" INSTALL_REDIS
+ask_install "Elasticsearch" INSTALL_ELASTIC
+ask_install "Fail2ban" INSTALL_FAIL2BAN
 
-echo ""
-echo "🎉 Instalação base concluída!"
+install_packages
+configure_ssh
+optimize_sysctl
+install_monitoring
+
+# Log de conclusão
+mkdir -p $(dirname "$LOG_FILE")
+date > "$LOG_FILE"
+echo "Instalação e configuração concluídas com sucesso."
