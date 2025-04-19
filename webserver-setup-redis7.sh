@@ -53,7 +53,8 @@ install_packages() {
     [[ "$INSTALL_NGINX" == "S" ]] && apt-get install -qq -y nginx
     [[ "$INSTALL_PHP" == "S" ]] && apt-get install -qq -y php8.2-fpm php8.2-mysql php8.2-curl php8.2-gd php8.2-mbstring php8.2-redis php8.2-xml php8.2-soap php8.2-zip
     [[ "$INSTALL_MYSQL" == "S" ]] && apt-get install -qq -y mysql-server mysqltuner percona-toolkit mytop
-    # Instala Redis 7.x (repositório oficial Redis Labs)
+    
+# Instala Redis 7.x (repositório oficial Redis Labs)
 add-apt-repository ppa:redislabs/redis -y
 apt-get update -qq
 [[ "$INSTALL_REDIS" == "S" ]] && apt-get install -qq -y redis
