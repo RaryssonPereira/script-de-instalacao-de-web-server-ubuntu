@@ -52,7 +52,7 @@ install_packages() {
 
     [[ "$INSTALL_NGINX" == "S" ]] && apt-get install -qq -y nginx
     [[ "$INSTALL_PHP" == "S" ]] && apt-get install -qq -y php8.2-fpm php8.2-mysql php8.2-curl php8.2-gd php8.2-mbstring php8.2-redis php8.2-xml php8.2-soap php8.2-zip
-    [[ "$INSTALL_MYSQL" == "S" ]] && apt-get install -qq -y percona-server-server-5.7 mysqltuner percona-toolkit mytop
+    [[ "$INSTALL_MYSQL" == "S" ]] && apt-get install -qq -y mysql-server mysqltuner percona-toolkit mytop
     [[ "$INSTALL_REDIS" == "S" ]] && apt-get install -qq -y redis-server
     [[ "$INSTALL_ELASTIC" == "S" ]] && apt-get install -qq -y openjdk-11-jre elasticsearch
     [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
