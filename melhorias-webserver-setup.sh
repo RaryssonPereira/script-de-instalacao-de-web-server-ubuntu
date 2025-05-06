@@ -20,8 +20,11 @@ configure_hostname(){
     echo "Hostname reverso detectado: $REVERSE_HOSTNAME"
     read -p "Digite o novo hostname (ou N para não alterar): " NEW_HOSTNAME
 
-    if [[ "$NEW_HOSTNAME" != "N" && "$NEW_HOSTNAME" != "n" ]]; then
-        hostnamectl set-hostname "$NEW_HOSTNAME"
-        echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts
+    # Se o usuário informou um novo hostname (diferente de "N" ou "n")
+    if [[ "$NEW_HOSTNAME" != "N" && "$NEW_HOSTNAME" != "n" ]]; then 
+        # Define o novo hostname com hostnamectl
+        hostnamectl set-hostname "$NEW_HOSTNAME" 
+        # Adiciona uma entrada no /etc/hosts para que o nome seja resolvido localmente
+        echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts 
     fi
 }
