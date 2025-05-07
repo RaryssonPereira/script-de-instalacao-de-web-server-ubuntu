@@ -28,3 +28,13 @@ configure_hostname(){
         echo "127.0.1.1 $NEW_HOSTNAME" >> /etc/hosts 
     fi
 }
+
+ask_install(){
+    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1).
+    local package=$1
+    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2).
+    local var=$2
+
+    # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
+    read -p "Instalar $package? (S/N): " answer
+}
