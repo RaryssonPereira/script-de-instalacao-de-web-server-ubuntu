@@ -37,4 +37,6 @@ ask_install(){
 
     # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
     read -p "Instalar $package? (S/N): " answer
+    # Converte a resposta para letra maiúscula, com o comando tr. Isso padroniza a entrada e evita ter que testar s, S, n, N separadamente.
+    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
 }
