@@ -1,3 +1,31 @@
+ask_install() {
+    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1).
+    local package=$1
+    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2).
+    local var=$2
+
+    # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
+    read -p "Instalar $package? (S/N): " answer
+
+    # Converte a resposta para letra maiúscula, com o comando tr. Isso padroniza a entrada e evita ter que testar s, S, n, N separadamente.
+    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
+
+    # Inicia um loop de validação: enquanto a resposta for diferente de "S" e de "N", continua repetindo.
+    while [[ "$answer" != "S" && "$answer" != "N" ]]; do
+        # Mostra um aviso amigável caso o usuário tenha digitado algo errado.
+        echo "Resposta inválida. Digite S ou N."
+        # Pergunta novamente, usando o mesmo texto da primeira vez.
+        read -p "Instalar $package? (S/N): " answer
+        # Converte novamente para maiúsculas, repetindo o padrão da primeira pergunta.
+        answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
+        # Finaliza o while. Se a resposta estiver correta ("S" ou "N"), sai do loop.
+    done
+
+    # Essa linha é o truque da função: ela usa eval para definir uma variável com nome contido em $var e atribui o valor de answer.
+    # Se $var="INSTALL_NGINX" e answer="S", o comando que será executado é: INSTALL_NGINX="S"
+    eval $var="$answer"
+}
+
 #! /bin/bash
 
 # Caminho onde será salvo o log desse script
@@ -29,34 +57,28 @@ configure_hostname() {
     fi
 }
 
-ask_install() {
-    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1).
-    local package=$1
-    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2).
-    local var=$2
 
-    # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
-    read -p "Instalar $package? (S/N): " answer
 
-    # Converte a resposta para letra maiúscula, com o comando tr. Isso padroniza a entrada e evita ter que testar s, S, n, N separadamente.
-    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
+# === Perguntas de instalação ===
+ask_install "Nginx" INSTALL_NGINX
 
-    # Inicia um loop de validação: enquanto a resposta for diferente de "S" e de "N", continua repetindo.
-    while [[ "$answer" != "S" && "$answer" != "N" ]]; do
-        # Mostra um aviso amigável caso o usuário tenha digitado algo errado.
-        echo "Resposta inválida. Digite S ou N."
-        # Pergunta novamente, usando o mesmo texto da primeira vez.
-        read -p "Instalar $package? (S/N): " answer
-        # Converte novamente para maiúsculas, repetindo o padrão da primeira pergunta.
-        answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
-        # Finaliza o while. Se a resposta estiver correta ("S" ou "N"), sai do loop.
-    done
+if [[ "$INSTALL_NGINX" == "N" ]]; then
+    ask_install "Apache" INSTALL_APACHE
+else
+    INSTALL_APACHE="N"
+fi
 
-    # Essa linha é o truque da função: ela usa eval para definir uma variável com nome contido em $var e atribui o valor de answer.
-    # Se $var="INSTALL_NGINX" e answer="S", o comando que será executado é: INSTALL_NGINX="S"
-    eval $var="$answer"
-}
+ask_install "PHP" INSTALL_PHP
+ask_install "MySQL" INSTALL_MYSQL
+ask_install "Redis" INSTALL_REDIS
+ask_install "Elasticsearch" INSTALL_ELASTIC
+ask_install "Fail2Ban" INSTALL_FAIL2BAN
 
+# Executa a instalação com base nas escolhas
+install_packages
+
+
+# === Execução final ===
 install_packages() {
     echo "Atualizando pacotes básicos..."
 
@@ -111,3 +133,4 @@ install_packages() {
     # Se o usuário escolheu instalar Fail2Ban (INSTALL_FAIL2BAN="S"), ele instala silenciosamente o Fail2Ban, ferramenta que protege o servidor contra ataques automatizados por força bruta bloqueando IPs após tentativas excessivas.
     [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
 }
+
