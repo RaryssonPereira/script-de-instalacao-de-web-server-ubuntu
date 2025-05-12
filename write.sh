@@ -1,56 +1,73 @@
 #! /bin/bash
 
-# Se o usuário escolheu instalar PhP (INSTALL_PHP="S"), ele instala silenciosamente o PHP 8.2 (FPM), com várias extensões importantes.
-if [[ "$INSTALL_PHP" == "S" ]]; then
+# Se o usuário escolheu instalar Nginx (INSTALL_NGINX="S"), ele instala silenciosamente a versão estável e segura do repositório oficial do nginx.org
+if [[ "$INSTALL_NGINX" == "S" ]]; then
+    echo "Instalando Nginx a partir do repositório oficial (nginx.org)..."
 
-    # Instala o núcleo do PHP 8.2 (cli, fpm, cgi) e várias extensões úteis para CMSs e APIs.
-    # As opções --force-confdef e --force-confold evitam prompts interativos de conflito de configuração, usando as versões antigas.
-    sudo apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" php8.2-cli php8.2-common
-    sudo apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" php8.2-fpm php8.2-cgi
-    sudo apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" php8.2-mysql php8.2-bcmath php8.2-curl php8.2-gd php8.2-mbstring php8.2-redis php8.2-xml php8.2-soap php8.2-zip
+    # Adiciona a chave pública do repositório oficial do Nginx
+    curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
 
-    # Otimizando o PHP-FPM (php-fpm.conf e www.conf). Evita falhas completas no pool PHP-FPM reiniciando os workers em caso de pane.
-    # - emergency_restart_threshold = 10: se 10 processos falharem rapidamente, reinicia.
-    sed -i -r "s/^.emergency_restart_threshold.*$/emergency_restart_threshold = 10/" /etc/php/8.2/fpm/php-fpm.conf
-    # - emergency_restart_interval = 1m: considera esse intervalo para o monitoramento.
-    sed -i -r "s/^.emergency_restart_interval.*$/emergency_restart_interval = 1m/" /etc/php/8.2/fpm/php-fpm.conf
-    # - process_control_timeout = 10s: evita travamentos ao tentar matar processos zumbis.
-    sed -i -r "s/^.process_control_timeout.*$/process_control_timeout = 10s/" /etc/php/8.2/fpm/php-fpm.conf
+    # Adiciona o repositório oficial do Nginx para Ubuntu 22.04 (Jammy)
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" |
+        tee /etc/apt/sources.list.d/nginx.list >/dev/null
 
-    # Ajustes de performance para o gerenciador de processos do FPM (modo dynamic).
-    # - pm.max_children = 180: número máximo de processos simultâneos.
-    sed -i -r "s/^pm.max_children.*$/pm.max_children = 180/" /etc/php/8.2/fpm/pool.d/www.conf
-    # -
-    sed -i -r "s/^pm.start_servers.*$/pm.start_servers = 25/" /etc/php/8.2/fpm/pool.d/www.conf
-    # -
-    sed -i -r "s/^pm.min_spare_servers.*$/pm.min_spare_servers = 10/" /etc/php/8.2/fpm/pool.d/www.conf
-    # -
-    sed -i -r "s/^pm.max_spare_servers.*$/pm.max_spare_servers = 30/" /etc/php/8.2/fpm/pool.d/www.conf
-    # - request_terminate_timeout = 60s: se uma requisição demorar mais de 60s, mata o processo.
-    sed -i -r "s/^.request_terminate_timeout.*$/request_terminate_timeout = 60s/" /etc/php/8.2/fpm/pool.d/www.conf
+    # Atualiza os pacotes e instala o Nginx
+    apt-get update -qq
+    apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nginx
 
-    # Altera o FPM para escutar por IP/porta (127.0.0.1:9000) em vez de socket Unix (.sock), o que facilita integração com Nginx via TCP.
-    sed -i '/listen = \/run/c\listen = 127.0.0.1:9000' /etc/php/8.2/fpm/pool.d/www.conf
+    # Instala apachetop para monitoramento de requisições em tempo real
+    apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" apachetop
 
-    # Endurecendo a segurança do PHP, desativa funções perigosas que podem ser exploradas em RCEs, shells remotos etc.
-    sed -i 's/disable_functions =/disable_functions = show_source, system, shell_exec, passthru, exec, phpinfo, popen, proc_open, allow_url_fopen, symlink/g' /etc/php/8.2/fpm/php.ini
+    # Instala WebP utilitários para otimização de imagens
+    apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" webp
 
-    # Path de sessões como /tmp.
-    sed -i -r "s/^;session.save_path.*$/session.save_path=\/tmp/" /etc/php/8.2/fpm/php.ini
+    # Adiciona repositório do Certbot e instala o plugin para Nginx (Let's Encrypt)
+    add-apt-repository -y ppa:certbot/certbot
+    apt-get update -qq
+    apt install -qq -y python3-certbot-nginx
 
-    # Tempo de vida da sessão como 8h.
-    sed -i -r "s/^session.gc_maxlifetime.*$/session.gc_maxlifetime = 28800/" /etc/php/8.2/fpm/php.ini
+    # Pergunta ao usuário se deseja configurar um projeto Nginx (estrutura em /var/www/projeto)
+    echo
+    echo 'Deseja configurar um projeto em /var/www/?'
+    echo 'Digite o nome do projeto (ex: google ou laminas-framework) ou "N" para pular:'
+    read projectname
 
-    # Nome customizado do cookie de sessão para evitar conflitos (RARYSESSID).
-    sed -i -r "s/^session.name.*$/session.name = RARYSESSID/" /etc/php/8.2/fpm/php.ini
+    # Enquanto o usuário não digitar nada, continua pedindo uma entrada válida
+    while [ -z "$projectname" ]; do
+        echo 'Nenhuma opção digitada, favor digitar uma opção válida:'
+        read projectname
+    done
 
-    # Aumenta limites de arquivos por processo, eleva o número de arquivos que processos PHP/Nginx podem abrir — importante para alto tráfego e uploads.
-    echo "*       soft    nofile  20000
-*       hard    nofile  40000" >>/etc/security/limits.conf
+    # Se o usuário não digitou "N" ou "n", ou seja, deseja configurar o projeto
+    if [[ "$projectname" != "N" && "$projectname" != "n" ]]; then
+        echo 'Digite o domínio do projeto (sem o www): (ex: dominio.com.br ou google.com.br)'
+        read domainname
 
-    # Copia o cron de limpeza de sessões PHP para /etc/cron.d/, apenas se ainda não estiver presente.
-    [[ ! -f /etc/cron.d/php-session-cleaner ]] && cp php-session-cleaner /etc/cron.d/
+        # Enquanto o domínio estiver vazio, continua pedindo uma entrada válida
+        while [ -z "$domainname" ]; do
+            echo 'Nenhuma opção digitada, favor digitar uma opção válida:'
+            read domainname
+        done
+    fi
 
-    # Reinicia o PHP-FPM para aplicar tudo.
-    service php8.2-fpm restart
+    # Verifica se a variável projectname não é "N" ou "n", ou seja, o usuário não recusou a criação do projeto.
+    if [ "$projectname" != 'N' ] && [ "$projectname" != 'n' ]; then
+
+        # Cria o diretório do projeto dentro de /var/www/, por exemplo: /var/www/meusite
+        mkdir /var/www
+        mkdir /var/www/$projectname
+
+        # Define que o usuário e grupo www-data (padrão do Nginx/PHP) sejam os donos da pasta do projeto.
+        chown -R "www-data:www-data" "/var/www/$projectname"
+
+        # Cria as pastas sites-available e sites-enabled, no estilo do Apache, para separar arquivos de configuração de vhosts.
+        mkdir /etc/nginx/sites-available
+        mkdir /etc/nginx/sites-enabled
+
+        # Substitui os placeholders DOMINIO e PROJETO no arquivo nginx.conf por seus respectivos valores (meusite.com.br, meusite, etc.).
+        sed -i "s/DOMINIO/$domainname/g" nginx.conf
+        sed -i "s/PROJETO/$projectname/g" nginx.conf
+
+    fi
+
 fi
