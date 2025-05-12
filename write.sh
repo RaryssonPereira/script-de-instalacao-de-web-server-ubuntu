@@ -68,6 +68,8 @@ if [[ "$INSTALL_NGINX" == "S" ]]; then
         sed -i "s/DOMINIO/$domainname/g" nginx.conf
         sed -i "s/PROJETO/$projectname/g" nginx.conf
 
+        # Copia o nginx.conf (já com os placeholders substituídos) para sites-available com o nome do domínio como nome de arquivo.
+        cp nginx.conf  "/etc/nginx/sites-available/$domainname.conf"
     fi
 
 fi
