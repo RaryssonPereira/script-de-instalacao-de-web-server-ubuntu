@@ -1,31 +1,3 @@
-ask_install() {
-    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1).
-    local package=$1
-    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2).
-    local var=$2
-
-    # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
-    read -p "Instalar $package? (S/N): " answer
-
-    # Converte a resposta para letra maiúscula, com o comando tr. Isso padroniza a entrada e evita ter que testar s, S, n, N separadamente.
-    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
-
-    # Inicia um loop de validação: enquanto a resposta for diferente de "S" e de "N", continua repetindo.
-    while [[ "$answer" != "S" && "$answer" != "N" ]]; do
-        # Mostra um aviso amigável caso o usuário tenha digitado algo errado.
-        echo "Resposta inválida. Digite S ou N."
-        # Pergunta novamente, usando o mesmo texto da primeira vez.
-        read -p "Instalar $package? (S/N): " answer
-        # Converte novamente para maiúsculas, repetindo o padrão da primeira pergunta.
-        answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
-        # Finaliza o while. Se a resposta estiver correta ("S" ou "N"), sai do loop.
-    done
-
-    # Essa linha é o truque da função: ela usa eval para definir uma variável com nome contido em $var e atribui o valor de answer.
-    # Se $var="INSTALL_NGINX" e answer="S", o comando que será executado é: INSTALL_NGINX="S"
-    eval $var="$answer"
-}
-
 #! /bin/bash
 
 # Caminho onde será salvo o log desse script
@@ -57,28 +29,34 @@ configure_hostname() {
     fi
 }
 
+ask_install() {
+    local package=$1
+    local var=$2
 
+    if [[ "$package" == "nginx" && "$INSTALL_APACHE" == "S" ]]; then
+        echo "Apache já foi selecionado. Não é possível instalar Nginx no mesmo servidor."
+        eval $var="N"
+        return
+    fi
 
-# === Perguntas de instalação ===
-ask_install "Nginx" INSTALL_NGINX
+    if [[ "$package" == "apache" && "$INSTALL_NGINX" == "S" ]]; then
+        echo "Nginx já foi selecionado. Não é possível instalar Apache no mesmo servidor."
+        eval $var="N"
+        return
+    fi
 
-if [[ "$INSTALL_NGINX" == "N" ]]; then
-    ask_install "Apache" INSTALL_APACHE
-else
-    INSTALL_APACHE="N"
-fi
+    read -p "Instalar $package? (S/N): " answer
+    answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
 
-ask_install "PHP" INSTALL_PHP
-ask_install "MySQL" INSTALL_MYSQL
-ask_install "Redis" INSTALL_REDIS
-ask_install "Elasticsearch" INSTALL_ELASTIC
-ask_install "Fail2Ban" INSTALL_FAIL2BAN
+    while [[ "$answer" != "S" && "$answer" != "N" ]]; do
+        echo "Resposta inválida. Digite S ou N."
+        read -p "Instalar $package? (S/N): " answer
+        answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
+    done
 
-# Executa a instalação com base nas escolhas
-install_packages
+    eval $var="$answer"
+}
 
-
-# === Execução final ===
 install_packages() {
     echo "Atualizando pacotes básicos..."
 
@@ -134,3 +112,71 @@ install_packages() {
     [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
 }
 
+
+
+
+# TENHO ANALISAR O CÓDIGO ABAIXO AINDA
+
+configure_ssh() {
+    echo "Portas comuns: [1] 22 (padrão), [2] 51439 (ServerDo.in), [3] 48291 (personalizada)"
+    read -rp "👉 Qual porta deseja usar para o SSH? [1/2/3]: " ssh_option
+
+    # Define a porta de acordo com a escolha do usuário
+    case "$ssh_option" in
+        1) ssh_port="22" ;;
+        2) ssh_port="51439" ;;
+        3) ssh_port="48291" ;;
+        *) echo "Opção inválida. Usando porta padrão 22."; ssh_port="22" ;;
+    esac
+
+    # Substitui ou define a diretiva Port no arquivo de configuração do SSH
+    sed -i "s/^#Port .*/Port $ssh_port/" /etc/ssh/sshd_config
+    sed -i "s/^Port .*/Port $ssh_port/" /etc/ssh/sshd_config
+
+    # Garante que autenticação por senha está habilitada
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+    echo "🔐 Porta SSH configurada para $ssh_port"
+
+    # Reinicia o serviço SSH para aplicar mudanças
+    systemctl restart ssh
+}
+
+optimize_sysctl() {
+cat <<EOF >> /etc/sysctl.conf
+net.ipv4.ip_local_port_range=1025 64000
+net.ipv4.tcp_fin_timeout=6
+net.ipv4.tcp_max_syn_backlog=65536
+net.core.somaxconn=16384
+net.ipv6.conf.all.disable_ipv6=1
+EOF
+sysctl -p
+}
+
+install_monitoring() {
+    wget https://repo.zabbix.com/zabbix/5.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_5.0-1+focal_all.deb
+    dpkg -i zabbix-release_5.0-1+focal_all.deb
+    apt update && apt install -y zabbix-agent
+    systemctl enable --now zabbix-agent
+}
+
+# Execução do script
+configure_hostname
+
+ask_install "NGINX" INSTALL_NGINX
+ask_install "APACHE" INSTALL_APACHE
+ask_install "PHP" INSTALL_PHP
+ask_install "MySQL (Percona)" INSTALL_MYSQL
+ask_install "Redis" INSTALL_REDIS
+ask_install "Elasticsearch" INSTALL_ELASTIC
+ask_install "Fail2ban" INSTALL_FAIL2BAN
+
+install_packages
+configure_ssh
+optimize_sysctl
+install_monitoring
+
+# Log de conclusão
+mkdir -p $(dirname "$LOG_FILE")
+date > "$LOG_FILE"
+echo "Instalação e configuração concluídas com sucesso."
