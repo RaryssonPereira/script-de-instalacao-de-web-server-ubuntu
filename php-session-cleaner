@@ -2,4 +2,4 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Limpa sessões expiradas do PHP a cada 2 horas
 # - Compatível com PHP 7.x, 8.x — limpa arquivos expirados nas pastas de sessão conforme gc_maxlifetime
-0 */2 * * *    root    /usr/lib/php/sessionclean
+0 */2 * * * root /usr/lib/php/sessionclean

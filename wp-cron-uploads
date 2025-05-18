@@ -1,0 +1,23 @@
+# Define o PATH para que comandos usados nas tarefas agendadas sejam encontrados corretamente
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+# === CRON WORDPRESS ===
+# Edite o caminho /var/www/projeto abaixo para o caminho real do seu site WordPress
+
+# === Reajuste de permissões de upload mensal ===
+# No dia 1º de cada mês, às 00:05, cria automaticamente a pasta do mês atual em wp-content/uploads (ex: uploads/2025/05)
+# e ajusta a propriedade da pasta para o usuário www-data, garantindo que o WordPress consiga gravar arquivos.
+#5 0 1 * *     root   mkdir -p /var/www/projeto/wp-content/uploads/$(date +\%Y)/$(date +\%m) && chown www-data: /var/www/projeto/wp-content/uploads/$(date +\%Y)/$(date +\%m)
+
+# === Execução do cron do WordPress via WP-CLI ===
+# Executa a fila de tarefas agendadas do WordPress (wp-cron) a cada 5 minutos,
+# substituindo o funcionamento padrão do wp-cron.php que depende de acessos ao site.
+# Recomendado usar isso com o wp-cron desabilitado no wp-config.php: define('DISABLE_WP_CRON', true);
+#*/5 * * * *  root    /usr/local/bin/wp cron event run --due-now --allow-root --path=/var/www/projeto > /dev/null 2>&1
+
+# Corrige permissões de diretórios (pastas) para 755, a cada dois dias, às 03:00
+#*/2 no campo do dia do mês significa "a cada dois dias"
+#0 3 */2 * * root find /var/www/projeto/wp-content/uploads -xdev -type d -exec chmod 755 {} \;
+
+# Corrige permissões de arquivos para 644, a cada dois dias, às 03:30
+#30 3 */2 * * root find /var/www/projeto/wp-content/uploads -xdev -type f -exec chmod 644 {} \;

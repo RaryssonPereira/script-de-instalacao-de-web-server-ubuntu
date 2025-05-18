@@ -1,0 +1,6 @@
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+# === Renovação automática de certificados SSL com Certbot ===
+# Executa mensalmente, dia 1 às 00:05, e renova apenas se necessário.
+# Certificados do Let's Encrypt expiram a cada 90 dias, por isso é recomendável automatizar.
+5 0 1 * * root certbot renew
