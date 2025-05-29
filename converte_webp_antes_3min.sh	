@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# === SCRIPT: converte_webp_3min.sh ===
+# === SCRIPT: converte_webp_antes_3min.sh ===
 # Este script verifica imagens criadas ou modificadas nos últimos 3 minutos
 # no diretório informado como argumento, e converte para .webp apenas se necessário.
 # Ideal para execução via cron com foco em imagens recém-enviadas em /uploads.
@@ -17,7 +17,7 @@ DIRETORIO="$1"
 # ⚠️ Se o diretório não foi informado ou não existir, exibe erro e sai
 if [ -z "$DIRETORIO" ] || [ ! -d "$DIRETORIO" ]; then
     echo "❌ Diretório inválido ou não informado."
-    echo "Uso: bash converte_webp_3min.sh /var/www/site/wp-content/uploads/$(date +%Y)/$(date +%m)"
+    echo "Uso: bash converte_webp_antes_3min.sh /var/www/site/wp-content/uploads/$(date +%Y)/$(date +%m)"
     exit 1
 fi
 

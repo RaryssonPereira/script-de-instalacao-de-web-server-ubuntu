@@ -87,8 +87,11 @@ if [[ "$INSTALL_NGINX" == "S" ]]; then
         # cron-conversao-webp: Converter imagens recém-modificadas para WebP a cada 3 minutos
         cp cron-conversao-webp /etc/cron.d/
 
-        # converte_webp_3min.sh: Este script busca por imagens recém-criadas ou modificadas no diretório /uploads de sites WordPress
-        cp converte_webp_3min.sh /opt/scripts/
+        # converte_webp_antes_3min.sh: Script que busca imagens criadas ou modificadas nos últimos 3 minutos no diretório /uploads de sites WordPress e gera suas versões .webp. Ideal para execução via cron a cada 3 minutos.
+        cp converte_webp_antes_3min.sh /opt/scripts/
+
+        # converte_webp_apos_3min.sh: Script complementar que converte imagens com mais de 3 minutos, garantindo que nenhuma imagem fique sem conversão. Ideal para execução diária via cron.
+        cp converte_webp_apos_3min.sh /opt/scripts/
 
         # converte-todos-para-webp.sh: Este script converte todas as imagens de um diretório (como wp-content/uploads) para o formato .webp.
         cp converte-todos-para-webp.sh /opt/scripts/

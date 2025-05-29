@@ -1,73 +1,91 @@
 #! /bin/bash
 
-# Caminho onde será salvo o log desse script
+#######################################################
+# PARTE 1 - Verificação inicial e configuração do Hostname
+# Este bloco inicial define o log do script, impede reexecuções
+# e permite ao usuário configurar um novo hostname para o servidor.
+#######################################################
+
+# Caminho onde será salvo o log da primeira execução do script.
 LOG_FILE="/var/log/setup_base.log"
 
-# Verifica se esse Script (webserver-setup.sh) já foi executado antes
+# Verifica se o script já foi executado antes.
+# Se o arquivo de log existir, o script será interrompido.
 if [ -f "$LOG_FILE=" ]; then
     echo "Não vamos seguir o script webserver-setup. Já foi executado antes em: $(cat $LOG_FILE). Saindo..."
     exit
 fi
 
-# Define o Hostname do Servidor
+# Função para configurar o hostname do servidor
 configure_hostname() {
-    # Consulta o IP público do Servidor usando um serviço externo
-    IP_SERVER=$(curl -s https://api.ipify.org) # O -s no curl significa "silent". Ele suprime a barra de progresso e mensagens de erro que normalmente são exibidas no terminal.
-    # Faz a consulta reversa do IP para obter o Hostname
+    # Obtém o IP público atual do servidor via requisição HTTP silenciosa (sem barra de progresso ou erros)
+    IP_SERVER=$(curl -s https://api.ipify.org)
+
+    # Realiza uma consulta DNS reversa no IP para tentar descobrir o hostname correspondente
     REVERSE_HOSTNAME=$(host "$IP_SERVER" | awk '/pointer/ {print $5}' | sed 's/\.$//')
 
+    # Exibe o hostname atual do servidor e o nome reverso detectado via DNS
     echo "Hostname atual: $(hostname)"
     echo "Hostname reverso detectado: $REVERSE_HOSTNAME"
+
+    # Solicita ao usuário um novo hostname (ou permite pular digitando "N")
     read -p "Digite o novo hostname (ou N para não alterar): " NEW_HOSTNAME
 
-    # Se o usuário informou um novo hostname (diferente de "N" ou "n")
+    # Se o usuário digitou algo diferente de "N" ou "n", define o novo hostname
     if [[ "$NEW_HOSTNAME" != "N" && "$NEW_HOSTNAME" != "n" ]]; then
-        # Define o novo hostname com hostnamectl
+        # Define o hostname usando o comando apropriado do systemd
         hostnamectl set-hostname "$NEW_HOSTNAME"
-        # Adiciona uma entrada no /etc/hosts para que o nome seja resolvido localmente
+
+        # Adiciona o novo hostname ao arquivo /etc/hosts para garantir resolução local
         echo "127.0.1.1 $NEW_HOSTNAME" >>/etc/hosts
     fi
 }
 
+#######################################################
+# PARTE 2 - Função ask_install
+# Essa função interativa pergunta ao usuário se deseja instalar
+# um pacote específico (ex: nginx ou apache), tratando conflitos
+# entre servidores web e armazenando a resposta.
+#######################################################
+
 ask_install() {
-    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1).
+    # Cria uma variável local chamada package e atribui o valor do primeiro argumento passado para a função ($1),
+    # representando o nome do pacote a ser instalado (ex: "nginx" ou "apache").
     local package=$1
-    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2).
+
+    # Cria uma segunda variável local chamada var e atribui o valor do segundo argumento ($2),
+    # que será o nome da variável onde a resposta do usuário será armazenada (ex: INSTALL_NGINX).
     local var=$2
 
-    # Se o pacote atual for "apache" e o Nginx já tiver sido selecionado antes, impede a instalação do APACHE para evitar conflito entre servidores web.
+    # Impede a instalação do Apache caso o Nginx já tenha sido selecionado anteriormente.
     if [[ "$package" == "apache" && "$INSTALL_NGINX" == "S" ]]; then
         echo "Nginx já foi selecionado. Não é possível instalar Apache no mesmo servidor."
         eval $var="N"
         return
     fi
 
-    # Se o pacote atual for "nginx" e o Apache já tiver sido selecionado antes, impede a instalação do NGINX para evitar conflito entre servidores web.
+    # Impede a instalação do Nginx caso o Apache já tenha sido selecionado anteriormente.
     if [[ "$package" == "nginx" && "$INSTALL_APACHE" == "S" ]]; then
         echo "Apache já foi selecionado. Não é possível instalar Nginx no mesmo servidor."
         eval $var="N"
         return
     fi
 
-    # Mostra ao usuário a pergunta: "Instalar nginx? (S/N):" e resposta digitada pelo usuário será armazenada na variável answer.
+    # Pergunta ao usuário se deseja instalar o pacote informado (ex: nginx) e armazena a resposta na variável answer.
     read -p "Instalar $package? (S/N): " answer
 
-    # Converte a resposta para letra maiúscula, com o comando tr. Isso padroniza a entrada e evita ter que testar s, S, n, N separadamente.
+    # Converte a resposta para letra maiúscula (padronização).
     answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
 
-    # Inicia um loop de validação: enquanto a resposta for diferente de "S" e de "N", continua repetindo.
+    # Valida a entrada: se não for "S" nem "N", continua perguntando até uma resposta válida.
     while [[ "$answer" != "S" && "$answer" != "N" ]]; do
-        # Mostra um aviso amigável caso o usuário tenha digitado algo errado.
         echo "Resposta inválida. Digite S ou N."
-        # Pergunta novamente, usando o mesmo texto da primeira vez.
         read -p "Instalar $package? (S/N): " answer
-        # Converte novamente para maiúsculas, repetindo o padrão da primeira pergunta.
         answer=$(echo "$answer" | tr '[:lower:]' '[:upper:]')
-        # Finaliza o while. Se a resposta estiver correta ("S" ou "N"), sai do loop.
     done
 
-    # Essa linha é o truque da função: ela usa eval para definir uma variável com nome contido em $var e atribui o valor de answer.
-    # Se $var="INSTALL_NGINX" e answer="S", o comando que será executado é: INSTALL_NGINX="S"
+    # Usa eval para definir dinamicamente a variável de controle com o nome armazenado em $var,
+    # atribuindo o valor da resposta (ex: INSTALL_NGINX="S").
     eval $var="$answer"
 }
 
@@ -204,6 +222,9 @@ install_packages() {
     # Se o usuário escolheu instalar Fail2Ban (INSTALL_FAIL2BAN="S"), ele instala silenciosamente o Fail2Ban, ferramenta que protege o servidor contra ataques automatizados por força bruta bloqueando IPs após tentativas excessivas.
     [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
 }
+
+
+
 
 # TENHO ANALISAR O CÓDIGO ABAIXO AINDA
 

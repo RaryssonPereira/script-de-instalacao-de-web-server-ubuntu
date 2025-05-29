@@ -2,4 +2,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/us
 
 # Converter imagens recém-modificadas para WebP a cada 3 minutos
 # Para ativar, remova o # e edite o caminho do projeto corretamente:
-#*/3 * * * * www-data /bin/bash /opt/serverdoin/scripts/converte_webp_3min.sh /var/www/PROJETO/wp-content/uploads/$(date +%Y)/$(date +%m) > /dev/null 2>&1
+#*/3 * * * * www-data /bin/bash /opt/scripts/converte_webp_antes_3min.sh /var/www/PROJETO/wp-content/uploads/$(date +\%Y)/$(date +\%m) > /dev/null 2>&1
+
+# Converter imagens mais antigas (modificadas há mais de 3 minutos) para WebP
+# Ideal para rodar 1x por dia no diretório inteiro de uploads:
+#0 2 * * * www-data /bin/bash /opt/scripts/converte_webp_apos_3min.sh /var/www/PROJETO/wp-content/uploads > /dev/null 2>&1
