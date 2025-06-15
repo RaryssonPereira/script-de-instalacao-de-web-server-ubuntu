@@ -223,9 +223,6 @@ install_packages() {
     [[ "$INSTALL_FAIL2BAN" == "S" ]] && apt-get install -qq -y fail2ban
 }
 
-
-
-
 # TENHO ANALISAR O CÓDIGO ABAIXO AINDA
 
 configure_ssh() {
