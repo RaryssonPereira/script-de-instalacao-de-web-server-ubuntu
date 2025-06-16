@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Tarefa agendada para monitorar o uso de disco e enviar alertas.
+# Roda todo dia às 7:00 da manhã.
+0 7 * * * root /usr/local/bin/alerta-espaco-disco.sh >/dev/null 2>&1

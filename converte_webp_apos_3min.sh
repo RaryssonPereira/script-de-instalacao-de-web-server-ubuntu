@@ -25,10 +25,10 @@ fi
 ARQUIVO_DE_IMAGENS=$(mktemp /tmp/webp_apos3min.XXXXXX)
 
 # 🔍 Busca imagens com mais de 3 minutos (extensões insensíveis a maiúsculas/minúsculas)
-find "$DIRETORIO" -type f -cmin +3 \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.gif" \) > "$ARQUIVO_DE_IMAGENS"
+find "$DIRETORIO" -type f -cmin +3 \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.gif" \) >"$ARQUIVO_DE_IMAGENS"
 
 # 📊 Conta quantas imagens foram encontradas
-QUANTIDADE=$(wc -l < "$ARQUIVO_DE_IMAGENS")
+QUANTIDADE=$(wc -l <"$ARQUIVO_DE_IMAGENS")
 POSICAO=0
 
 # 🔁 Processa cada imagem encontrada
@@ -52,7 +52,7 @@ while IFS= read -r ARQUIVO; do
         cwebp "$ARQUIVO" -o "$DESTINO_WEBP"
         echo -e '########################################################################\n'
     fi
-done < "$ARQUIVO_DE_IMAGENS"
+done <"$ARQUIVO_DE_IMAGENS"
 
 # 🧹 Remove o arquivo temporário criado
 rm -f "$ARQUIVO_DE_IMAGENS"

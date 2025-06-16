@@ -4,8 +4,8 @@
 # SCRIPT DE SETUP BÁSICO DE SERVIDOR
 #
 # Autor: Rarysson Pereira
-# Data: 14/06/2025
-# Versão: 4.0
+# Data: 15/06/2025
+# Versão: 17.0
 #
 # Descrição:
 # Prepara um novo servidor Ubuntu para hospedagem.
@@ -13,9 +13,10 @@
 # - Parte 2: Configuração do hostname.
 # - Parte 3: Menu interativo para seleção de pacotes.
 # - Parte 4: Resumo e confirmação final.
-# - Parte 5: Atualização do sistema e ferramentas base.
-# - Parte 6: Configuração do retransmissor de e-mail (SMTP).
-# - Parte 7: Criação de um script de backup de configurações (padrão).
+# - Parte 5: Atualização do sistema e instalação de ferramentas base.
+# - Parte 6: Deploy de scripts e crons de utilidade (monitoramento).
+# - Parte 7: Configuração do retransmissor de e-mail (SMTP).
+# - Parte 8: Criação de um script de backup de configurações.
 #
 #######################################################################
 
@@ -313,7 +314,41 @@ install_base_system() {
 }
 
 #######################################################################
-# PARTE 6: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
+# PARTE 6: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+#######################################################################
+deploy_utility_scripts() {
+
+  # --- Monitoramento de Disco ---
+  log "Instalando scripts de utilidade (monitoramento de disco)..."
+
+  # Copia o script de monitoramento para o diretório de binários locais.
+  cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
+  # Garante que o script seja executável.
+  chmod +x /usr/local/bin/alerta-espaco-disco.sh
+
+  # Copia a tarefa agendada para o diretório do cron.
+  cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
+  # Garante as permissões corretas para o arquivo cron.
+  chmod 644 /etc/cron.d/cron-alerta-espaco-disco
+
+  # --- Monitoramento de Carga do Servidor ---
+  log "Copiando script de monitoramento de carga (load average)..."
+
+  # Copia o script de alerta de carga para o diretório de binários locais do sistema.
+  cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
+  # Torna o script executável para que possa ser chamado pelo cron.
+  chmod +x /usr/local/bin/alerta-load-average.sh
+
+  # Copia o arquivo de tarefa agendada para o diretório do cron.
+  cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
+  # Garante as permissões corretas para o arquivo cron, por segurança.
+  chmod 644 /etc/cron.d/cron-alerta-load-average
+
+  log "Script de monitoramento de disco instalado e agendado."
+}
+
+#######################################################################
+# PARTE 7: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
 #######################################################################
 
 install_ssmtp() {
@@ -359,7 +394,7 @@ EOF
 }
 
 #######################################################################
-# PARTE 7: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 8: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
@@ -422,7 +457,7 @@ EOF
 
   # Copia o arquivo cron pré-configurado do repositório para o diretório do sistema.
   log "Agendando o script de backup para execução diária..."
-  cp cron-backup-config /etc/cron.d/backup-configs
+  cp cron-backup-config /etc/cron.d/cron-backup-config
 
   # Garante permissões corretas para o arquivo cron.
   chmod 644 /etc/cron.d/backup-configs
@@ -441,10 +476,12 @@ EOF
 
 # --- EXECUÇÃO PRINCIPAL ---
 
+# Etapa 1: Chama a função para configurar o hostname do servidor.
 configure_hostname
 
-# Laço principal para as perguntas. Permite ao usuário refazer a seleção.
+# Etapa 2: Inicia um laço que permite ao usuário refazer a seleção de pacotes se errar.
 while true; do
+  # Reseta as variáveis de instalação a cada vez que o laço recomeça.
   INSTALL_NGINX=""
   INSTALL_APACHE=""
   INSTALL_MYSQL=""
@@ -454,6 +491,7 @@ while true; do
   INSTALL_FAIL2BAN=""
   INSTALL_ELASTICSEARCH=""
 
+  # Exibe o menu interativo de perguntas para cada serviço.
   log "Iniciando seleção de pacotes para instalação..."
   ask_install "nginx" "INSTALL_NGINX"
   ask_install "apache" "INSTALL_APACHE"
@@ -464,39 +502,44 @@ while true; do
   ask_install "fail2ban" "INSTALL_FAIL2BAN"
   ask_install "elasticsearch" "INSTALL_ELASTICSEARCH"
 
-  # Mostra o resumo e pede a confirmação final.
+  # Mostra o resumo das opções e pede uma confirmação final.
   confirm_selections
 
-  # Se a função 'confirm_selections' retornou 0 (usuário digitou 'S')...
+  # Verifica a resposta do usuário: se for 'S' (código 0), quebra o laço.
   if [ $? -eq 0 ]; then
-    # ...quebra o laço e prossegue para a instalação.
     break
+  # Se for 'N' (código 1), informa o usuário e o laço recomeça.
   else
-    # ...informa ao usuário que as perguntas serão feitas novamente.
     log "Seleção cancelada. Por favor, responda às perguntas novamente."
     echo
   fi
 done
 
+# Etapa 3: Após a confirmação, prossegue com as instalações.
 log "Confirmação recebida. Prosseguindo com a instalação..."
 
-# Executa a atualização do sistema e instala ferramentas base
+# Instala as atualizações do sistema e as ferramentas base.
 install_base_system
 
+# Etapa 4: Inicia a instalação dos serviços que foram selecionados pelo usuário.
 # --- Instalação dos Serviços Selecionados ---
-# A instalação de cada serviço será chamada aqui, se selecionado.
 
+# Instala o SSMTP se o usuário escolheu 'S'.
 if [[ "$INSTALL_SSMTP" == "S" ]]; then
   install_ssmtp
 fi
 
-# As partes de instalação do Nginx, Apache, etc., virão aqui.
+# (As partes de instalação do Nginx, Apache, etc., virão aqui)
 
-# Criação do script de backup (agora é padrão).
+# Instala os scripts de utilidade (monitoramento de disco e carga).
+deploy_utility_scripts
+
+# Etapa 5: Cria e agenda o script de backup de configurações como uma ação padrão.
 setup_config_backup_script
 
+# Etapa 6: Finaliza o script.
 log "Script finalizado com sucesso."
-# Cria o arquivo de log para travar futuras execuções, salvando apenas a data.
+# Cria o arquivo de log para impedir futuras execuções.
 date >"$LOG_FILE"
-
+# Encerra o script com código 0 (sucesso).
 exit 0

@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Tarefa agendada para monitorar a carga do servidor e enviar alertas.
+# Roda a cada 2 horas (no minuto 0 de horas pares).
+0 */2 * * * root /usr/local/bin/alerta-load-average.sh >/dev/null 2>&1

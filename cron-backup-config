@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Tarefa agendada para backup diário de configurações do servidor.
+# Roda todo dia às 3:05 da manhã.
+5 3 * * * root /usr/local/bin/backup_configs.sh >/var/log/backup_configs.log 2>&1
