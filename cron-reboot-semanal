@@ -1,0 +1,9 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Tarefa agendada para reboot semanal automática.
+# Toda sexta-feira, à 1:30 da manhã, atualiza todos os pacotes do sistema.
+30 1 * * 5 root DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" > /var/log/reboot-semanal.log 2>&1
+
+# Toda sexta-feira, às 3:30 da manhã, reinicia o servidor para aplicar atualizações críticas (como as do kernel).
+30 3 * * 5 root /sbin/reboot >> /var/log/reboot-semanal.log 2>&1

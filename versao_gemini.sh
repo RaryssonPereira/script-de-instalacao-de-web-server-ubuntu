@@ -14,9 +14,10 @@
 # - Parte 3: Menu interativo para seleção de pacotes.
 # - Parte 4: Resumo e confirmação final.
 # - Parte 5: Atualização do sistema e instalação de ferramentas base.
-# - Parte 6: Deploy de scripts e crons de utilidade (monitoramento).
-# - Parte 7: Configuração do retransmissor de e-mail (SMTP).
-# - Parte 8: Criação de um script de backup de configurações.
+# - Parte 6: Configuração do Servidor SSH.
+# - Parte 7: Deploy de scripts e crons de utilidade (monitoramento).
+# - Parte 8: Configuração do retransmissor de e-mail (SMTP).
+# - Parte 9: Criação de um script de backup de configurações.
 #
 #######################################################################
 
@@ -311,21 +312,123 @@ install_base_system() {
   dpkg-reconfigure --frontend noninteractive tzdata
   # Usa o comando moderno para garantir que a mudança de fuso horário seja aplicada.
   timedatectl set-timezone America/Sao_Paulo
+
+  # --- Configuração Opcional para Backup Dedicado (rsync) ---
+  # O trecho abaixo prepara o servidor para ser acessado por um servidor de backup dedicado via SSH.
+  #
+  # QUANDO DESCOMENTAR E USAR?
+  # - Se você tiver um segundo servidor (servidor de backup) e quiser que ele puxe os backups
+  #   deste servidor de forma segura e sem senha, usando chaves SSH.
+  #
+  # log "Configurando usuário 'rsync' para backups dedicados..."
+  # # Cria um usuário de sistema chamado 'rsync' sem senha, apenas para tarefas de backup.
+  # adduser --quiet rsync --disabled-password --gecos ""
+  #
+  # # Adiciona a chave SSH PÚBLICA do seu SERVIDOR DE BACKUP abaixo.
+  # # Isso autoriza o servidor de backup a se conectar como o usuário 'rsync'.
+  # mkdir -p /home/rsync/.ssh
+  # echo "ssh-rsa AAAA...chave-publica-do-seu-servidor-de-backup... rsync@servidor-backup" > /home/rsync/.ssh/authorized_keys
+  #
+  # # Garante as permissões corretas para a pasta e o arquivo de chaves.
+  # chown -R rsync:rsync /home/rsync/.ssh
+  # chmod 700 /home/rsync/.ssh
+  # chmod 600 /home/rsync/.ssh/authorized_keys
 }
 
 #######################################################################
-# PARTE 6: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+# PARTE 6: CONFIGURAÇÃO DO SERVIDOR SSH
+#######################################################################
+
+# Função auxiliar da Parte 6 para configurar a porta do SSH de forma interativa.
+configure_ssh_port() {
+  log "Configurando a porta do serviço SSH..."
+  local SSH_PORT
+
+  echo
+  log "--------------------- CONFIGURAÇÃO DA PORTA SSH ---------------------"
+  log "Escolha a porta que o SSH irá usar para conexões remotas."
+  log "[1] Padrão (22)           - Mais compatível, porém alvo constante de ataques."
+  log "[2] Segura Recomendada (48291) - Dificulta ataques automatizados."
+  log "[3] Digitar uma porta personalizada."
+  log "-------------------------------------------------------------------"
+
+  local choice
+  read -p ">> Escolha uma opção [padrão: 2]: " choice
+
+  case "$choice" in
+  1)
+    SSH_PORT=22
+    ;;
+  3)
+    while true; do
+      read -p ">> Digite a porta desejada (entre 1024 e 65535): " custom_port
+      if [[ "$custom_port" =~ ^[0-9]+$ && "$custom_port" -ge 1024 && "$custom_port" -le 65535 ]]; then
+        SSH_PORT=$custom_port
+        break
+      else
+        log "ERRO: Porta inválida. Por favor, digite um número entre 1024 e 65535."
+      fi
+    done
+    ;;
+  *) # Opção 2 ou qualquer outra entrada se torna o padrão.
+    SSH_PORT=48291
+    ;;
+  esac
+
+  log "Definindo a porta do SSH para $SSH_PORT..."
+  sed -i -r "s/#?Port [0-9]*/Port $SSH_PORT/g" /etc/ssh/sshd_config
+
+  if [[ "$SSH_PORT" != "22" ]]; then
+    echo
+    log "------------------------- ATENÇÃO -------------------------"
+    log "A porta do SSH foi alterada para $SSH_PORT."
+    log "Para conectar, use: ssh seu_usuario@servidor -p $SSH_PORT"
+    log "---------------------------------------------------------"
+    echo
+  fi
+}
+
+# Função principal da Parte 6.
+setup_ssh() {
+  log "Configurando o servidor SSH para maior segurança..."
+
+  # Chama a função interativa para definir a porta do SSH.
+  configure_ssh_port
+
+  # Garante que a autenticação por senha esteja habilitada.
+  sed -i -r "s/#?PasswordAuthentication (yes|no)/PasswordAuthentication yes/" /etc/ssh/sshd_config
+
+  # Configura um banner de aviso que será exibido antes do login.
+  cat >/etc/issue.net <<EOF
+###############################################################
+#                                                             #
+#   Este servidor foi configurado com o script webserver-setup.sh
+#   Autor: Rarysson Pereira
+#   Repo: https://github.com/RaryssonPereira/script-de-instalacao-de-web-server-ubuntu
+#
+#   AVISO: Este sistema é privado. Todo acesso é monitorado.
+#                                                             #
+###############################################################
+EOF
+  sed -i -r "s/#?Banner .*$/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
+
+  # Reinicia o serviço SSH para aplicar as novas configurações.
+  systemctl restart sshd
+}
+
+#######################################################################
+# PARTE 7: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
 #######################################################################
 deploy_utility_scripts() {
 
   # --- Monitoramento de Disco ---
   log "Instalando scripts de utilidade (monitoramento de disco)..."
-
+  #
   # Copia o script de monitoramento para o diretório de binários locais.
   cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
   # Garante que o script seja executável.
   chmod +x /usr/local/bin/alerta-espaco-disco.sh
-
+  #
   # Copia a tarefa agendada para o diretório do cron.
   cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
   # Garante as permissões corretas para o arquivo cron.
@@ -333,22 +436,27 @@ deploy_utility_scripts() {
 
   # --- Monitoramento de Carga do Servidor ---
   log "Copiando script de monitoramento de carga (load average)..."
-
+  #
   # Copia o script de alerta de carga para o diretório de binários locais do sistema.
   cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
   # Torna o script executável para que possa ser chamado pelo cron.
   chmod +x /usr/local/bin/alerta-load-average.sh
-
+  #
   # Copia o arquivo de tarefa agendada para o diretório do cron.
   cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
   # Garante as permissões corretas para o arquivo cron, por segurança.
   chmod 644 /etc/cron.d/cron-alerta-load-average
 
+  # --- Manutenção Semanal Automática ---
+  log "Copiando cron de atualização e reboot semanal..."
+  cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
+  chmod 644 /etc/cron.d/cron-reboot-semanal
+
   log "Script de monitoramento de disco instalado e agendado."
 }
 
 #######################################################################
-# PARTE 7: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
+# PARTE 8: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
 #######################################################################
 
 install_ssmtp() {
@@ -394,8 +502,9 @@ EOF
 }
 
 #######################################################################
-# PARTE 8: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 9: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
+
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
   log "Configurando o script de backup de configurações..."
@@ -457,7 +566,7 @@ EOF
 
   # Copia o arquivo cron pré-configurado do repositório para o diretório do sistema.
   log "Agendando o script de backup para execução diária..."
-  cp cron-backup-config /etc/cron.d/cron-backup-config
+  cp cron-backup-config /etc/cron.d/backup-configs
 
   # Garante permissões corretas para o arquivo cron.
   chmod 644 /etc/cron.d/backup-configs
@@ -468,9 +577,8 @@ EOF
   # Exibe uma mensagem informativa ao usuário com os próximos passos.
   log "------------------------- INFORMAÇÃO --------------------------"
   log "Script de backup de configurações criado em: $script_path"
-  log "Para automatizar, adicione-o ao crontab do root (crontab -e)."
-  log "Exemplo para rodar todo dia às 3 da manhã:"
-  log "0 3 * * * $script_path"
+  log "Tarefa de automação copiada para: /etc/cron.d/backup-configs"
+  log "O backup será executado automaticamente todos os dias."
   log "-------------------------------------------------------------------"
 }
 
@@ -520,6 +628,9 @@ log "Confirmação recebida. Prosseguindo com a instalação..."
 
 # Instala as atualizações do sistema e as ferramentas base.
 install_base_system
+
+# Instala e configura o SSHD do servidor de forma interativa.
+setup_ssh
 
 # Etapa 4: Inicia a instalação dos serviços que foram selecionados pelo usuário.
 # --- Instalação dos Serviços Selecionados ---
