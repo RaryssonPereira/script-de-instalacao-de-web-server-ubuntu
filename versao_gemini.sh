@@ -14,10 +14,11 @@
 # - Parte 3: Menu interativo para seleção de pacotes.
 # - Parte 4: Resumo e confirmação final.
 # - Parte 5: Atualização do sistema e instalação de ferramentas base.
-# - Parte 6: Configuração do Servidor SSH.
-# - Parte 7: Deploy de scripts e crons de utilidade (monitoramento).
+# - Parte 6: Configuração do SSH e do Firewall.
+# - Parte 7: Otimização do Kernel de Rede.
 # - Parte 8: Configuração do retransmissor de e-mail (SMTP).
-# - Parte 9: Criação de um script de backup de configurações.
+# - Parte 9: Deploy de scripts e crons de utilidade.
+# - Parte 10: Criação de um script de backup de configurações.
 #
 #######################################################################
 
@@ -234,6 +235,7 @@ confirm_selections() {
   echo "  - Instalar Redis: $INSTALL_REDIS"
   echo "  - Instalar SSMTP (Email Relay): $INSTALL_SSMTP"
   echo "  - Instalar Fail2Ban: $INSTALL_FAIL2BAN"
+  echo "  - Usar regras Iptables (em vez de UFW): $INSTALL_IPTABLES"
   echo "  - Instalar Elasticsearch: $INSTALL_ELASTICSEARCH"
   echo
 
@@ -336,123 +338,210 @@ install_base_system() {
 }
 
 #######################################################################
-# PARTE 6: CONFIGURAÇÃO DO SERVIDOR SSH
+# PARTE 6: CONFIGURAÇÃO DO SERVIDOR SSH E FIREWALL
 #######################################################################
 
-# Função auxiliar da Parte 6 para configurar a porta do SSH de forma interativa.
-configure_ssh_port() {
-  log "Configurando a porta do serviço SSH..."
-  local SSH_PORT
-
-  echo
-  log "--------------------- CONFIGURAÇÃO DA PORTA SSH ---------------------"
-  log "Escolha a porta que o SSH irá usar para conexões remotas."
-  log "[1] Padrão (22)           - Mais compatível, porém alvo constante de ataques."
-  log "[2] Segura Recomendada (48291) - Dificulta ataques automatizados."
-  log "[3] Digitar uma porta personalizada."
-  log "-------------------------------------------------------------------"
-
-  local choice
-  read -p ">> Escolha uma opção [padrão: 2]: " choice
-
-  case "$choice" in
-  1)
-    SSH_PORT=22
-    ;;
-  3)
-    while true; do
-      read -p ">> Digite a porta desejada (entre 1024 e 65535): " custom_port
-      if [[ "$custom_port" =~ ^[0-9]+$ && "$custom_port" -ge 1024 && "$custom_port" -le 65535 ]]; then
-        SSH_PORT=$custom_port
-        break
-      else
-        log "ERRO: Porta inválida. Por favor, digite um número entre 1024 e 65535."
-      fi
-    done
-    ;;
-  *) # Opção 2 ou qualquer outra entrada se torna o padrão.
-    SSH_PORT=48291
-    ;;
-  esac
-
-  log "Definindo a porta do SSH para $SSH_PORT..."
-  sed -i -r "s/#?Port [0-9]*/Port $SSH_PORT/g" /etc/ssh/sshd_config
-
-  if [[ "$SSH_PORT" != "22" ]]; then
-    echo
-    log "------------------------- ATENÇÃO -------------------------"
-    log "A porta do SSH foi alterada para $SSH_PORT."
-    log "Para conectar, use: ssh seu_usuario@servidor -p $SSH_PORT"
-    log "---------------------------------------------------------"
-    echo
-  fi
-}
-
 # Função principal da Parte 6.
-setup_ssh() {
-  log "Configurando o servidor SSH para maior segurança..."
+setup_ssh_and_firewall() {
+  # Exibe a mensagem de início da função.
+  log "Configurando o servidor SSH e o Firewall..."
 
-  # Chama a função interativa para definir a porta do SSH.
+  # Chama a função auxiliar para perguntar ao usuário qual porta SSH usar.
   configure_ssh_port
 
+  # Altera a porta no arquivo de configuração do SSH para o valor escolhido.
+  sed -i -r "s/#?Port [0-9]*/Port $GLOBAL_SSH_PORT/g" /etc/ssh/sshd_config
   # Garante que a autenticação por senha esteja habilitada.
   sed -i -r "s/#?PasswordAuthentication (yes|no)/PasswordAuthentication yes/" /etc/ssh/sshd_config
-
-  # Configura um banner de aviso que será exibido antes do login.
+  # Cria o arquivo de banner com as informações do script e um aviso legal.
   cat >/etc/issue.net <<EOF
 ###############################################################
-#                                                             #
 #   Este servidor foi configurado com o script webserver-setup.sh
 #   Autor: Rarysson Pereira
 #   Repo: https://github.com/RaryssonPereira/script-de-instalacao-de-web-server-ubuntu
 #
 #   AVISO: Este sistema é privado. Todo acesso é monitorado.
-#                                                             #
 ###############################################################
 EOF
+  # Ativa o banner no arquivo de configuração do SSH.
   sed -i -r "s/#?Banner .*$/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
-
-  # Reinicia o serviço SSH para aplicar as novas configurações.
+  # Reinicia o serviço SSH para que todas as novas configurações entrem em vigor.
   systemctl restart sshd
+
+  # Se a porta escolhida não for a padrão (22), exibe um alerta importante.
+  if [[ "$GLOBAL_SSH_PORT" != "22" ]]; then
+    log "ATENÇÃO: A porta do SSH foi alterada para $GLOBAL_SSH_PORT. Use 'ssh -p $GLOBAL_SSH_PORT' para conectar."
+  fi
+
+  # Verifica qual firewall o usuário escolheu para configurar.
+  if [[ "$INSTALL_IPTABLES" == "S" ]]; then
+    # Se o usuário escolheu regras personalizadas, chama a função do iptables.
+    setup_firewall_iptables
+  else
+    # Se não, usa o UFW como firewall padrão e seguro.
+    setup_firewall_ufw
+  fi
+}
+
+# Função auxiliar para configurar a porta do SSH de forma interativa.
+configure_ssh_port() {
+  # Exibe a mensagem de início da função.
+  log "Configurando a porta do serviço SSH..."
+
+  # Exibe um menu de opções para o usuário.
+  echo
+  log "--------------------- CONFIGURAÇÃO DA PORTA SSH ---------------------"
+  log "Escolha a porta que o SSH irá usar para conexões remotas."
+  log "[1] Padrão (22)           - Mais compatível, porém alvo constante de ataques."
+  log "[2] Segura Recomendada (51439) - Dificulta ataques automatizados."
+  log "[3] Digitar uma porta personalizada."
+  log "-------------------------------------------------------------------"
+
+  # Declara uma variável local para armazenar a escolha do usuário.
+  local choice
+  # Pausa o script e lê a opção digitada pelo usuário.
+  read -p ">> Escolha uma opção [padrão: 2]: " choice
+
+  # Inicia uma estrutura 'case' para tratar a opção escolhida.
+  case "$choice" in
+  1)
+    # Se a escolha for '1', define a porta SSH como a padrão 22.
+    GLOBAL_SSH_PORT=22
+    ;;
+  3)
+    # Se a escolha for '3', inicia um laço para pedir uma porta personalizada.
+    while true; do
+      # Pede ao usuário para digitar o número da porta personalizada.
+      read -p ">> Digite a porta desejada (entre 1024 e 65535): " custom_port
+      # Valida se a entrada é um número e está no intervalo permitido (1024-65535).
+      if [[ "$custom_port" =~ ^[0-9]+$ && "$custom_port" -ge 1024 && "$custom_port" -le 65535 ]]; then
+        # Se a porta for válida, a define e sai do laço 'while'.
+        GLOBAL_SSH_PORT=$custom_port
+        break
+      else
+        # Se a porta for inválida, exibe uma mensagem de erro e o laço continua.
+        log "ERRO: Porta inválida. Por favor, digite um número entre 1024 e 65535."
+      fi
+    done
+    ;;
+  *) # Se a escolha for '2' ou qualquer outra coisa, usa a porta segura recomendada como padrão.
+    GLOBAL_SSH_PORT=51439
+    ;;
+  esac
+  # Informa ao usuário qual porta foi definida.
+  log "Porta SSH definida como $GLOBAL_SSH_PORT."
+}
+
+# Função auxiliar para configurar as regras do firewall UFW (padrão).
+setup_firewall_ufw() {
+  # Exibe a mensagem de início da função.
+  log "Configurando o firewall padrão (UFW)..."
+  # Reseta o UFW para as configurações de fábrica, limpando todas as regras existentes.
+  ufw --force reset >/dev/null
+  # Define a política padrão para negar todas as conexões de entrada.
+  ufw default deny incoming
+  # Define a política padrão para permitir todas as conexões de saída.
+  ufw default allow outgoing
+  # Libera a porta SSH que foi configurada, permitindo o acesso remoto.
+  ufw allow "$GLOBAL_SSH_PORT/tcp"
+  # Libera a porta 80/tcp (HTTP) para tráfego web.
+  ufw allow http
+  # Libera a porta 443/tcp (HTTPS) para tráfego web seguro.
+  ufw allow https
+  # Ativa o firewall de forma não-interativa, confirmando a operação.
+  echo "y" | ufw enable
+  # Informa que o firewall foi ativado.
+  log "Firewall UFW ativado. Verificando status:"
+  # Exibe o status detalhado do firewall com as regras ativas.
+  ufw status verbose
+}
+
+# Função auxiliar para configurar as regras do firewall iptables a partir de um arquivo de template.
+setup_firewall_iptables() {
+  # Exibe a mensagem de início da função.
+  log "Configurando o firewall com regras personalizadas (iptables)..."
+
+  # Verifica se o arquivo de template 'rules.v4' existe no diretório atual.
+  if [[ ! -f "rules.v4" ]]; then
+    # Se o arquivo não for encontrado, avisa o usuário e ativa o UFW como uma medida de segurança.
+    log "AVISO: Arquivo 'rules.v4' não encontrado. Configurando UFW como fallback de segurança."
+    # Chama a função do UFW para garantir que o servidor tenha um firewall básico.
+    setup_firewall_ufw
+    # Sai da função atual para não executar os comandos seguintes.
+    return
+  fi
+
+  # Desabilita o UFW para evitar conflitos com as regras diretas do iptables.
+  log "Desabilitando o UFW para usar regras de iptables diretamente."
+  ufw --force disable >/dev/null
+  # Garante que o diretório padrão do iptables-persistent exista.
+  mkdir -p /etc/iptables/
+  # Copia o arquivo de regras do repositório para o local correto no sistema.
+  cp rules.v4 /etc/iptables/rules.v4
+  log "Arquivo de regras 'rules.v4' copiado para /etc/iptables/."
+
+  # Declara uma variável local para armazenar o nome da interface de rede.
+  local network_interface
+  # Detecta automaticamente o nome da interface de rede principal (ex: eth0, ens3).
+  network_interface=$(ip -o -4 route show to default | awk '{print $5}')
+
+  # Se o nome da interface foi detectado com sucesso...
+  if [[ -n "$network_interface" ]]; then
+    # Adapta o arquivo de regras, substituindo o placeholder 'eth0' pelo nome real da interface.
+    log "Adaptando regras de firewall para a interface de rede: $network_interface"
+    sed -i "s/eth0/$network_interface/g" /etc/iptables/rules.v4
+  else
+    # Se não foi possível detectar, avisa o usuário que um ajuste manual pode ser necessário.
+    log "AVISO: Não foi possível detectar a interface de rede principal. As regras podem precisar de ajuste manual."
+  fi
+
+  # Substitui o placeholder da porta SSH ('22222') pela porta que o usuário escolheu.
+  log "Adaptando regras de firewall para a porta SSH: $GLOBAL_SSH_PORT"
+  sed -i "s/22222/$GLOBAL_SSH_PORT/g" /etc/iptables/rules.v4
+
+  # Aplica as novas regras de firewall imediatamente.
+  log "Aplicando e salvando novas regras de firewall..."
+  iptables-restore </etc/iptables/rules.v4
+  # Salva as regras ativas para que elas persistam após uma reinicialização.
+  netfilter-persistent save
+  # Informa que a configuração foi concluída.
+  log "Configuração do iptables concluída."
 }
 
 #######################################################################
-# PARTE 7: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+# PARTE 7: OTIMIZAÇÃO DO KERNEL DE REDE (SYSCTL)
 #######################################################################
-deploy_utility_scripts() {
+optimize_kernel_network() {
+  log "Otimizando parâmetros do kernel de rede para alto desempenho..."
 
-  # --- Monitoramento de Disco ---
-  log "Instalando scripts de utilidade (monitoramento de disco)..."
-  #
-  # Copia o script de monitoramento para o diretório de binários locais.
-  cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
-  # Garante que o script seja executável.
-  chmod +x /usr/local/bin/alerta-espaco-disco.sh
-  #
-  # Copia a tarefa agendada para o diretório do cron.
-  cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
-  # Garante as permissões corretas para o arquivo cron.
-  chmod 644 /etc/cron.d/cron-alerta-espaco-disco
+  # Cria um arquivo de configuração dedicado para as otimizações de rede.
+  # Esta é a abordagem moderna e correta para gerenciar configurações do sysctl.
+  cat >/etc/sysctl.d/99-web-optimizations.conf <<EOF
+# Otimizações para servidores web com alto tráfego
+net.ipv4.ip_local_port_range=1024 65000
+net.ipv4.tcp_fin_timeout=30
+net.ipv4.tcp_max_tw_buckets=2000000
+net.ipv4.tcp_max_syn_backlog=20480
+net.ipv4.tcp_max_orphans=20000
+net.core.somaxconn=16384
 
-  # --- Monitoramento de Carga do Servidor ---
-  log "Copiando script de monitoramento de carga (load average)..."
-  #
-  # Copia o script de alerta de carga para o diretório de binários locais do sistema.
-  cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
-  # Torna o script executável para que possa ser chamado pelo cron.
-  chmod +x /usr/local/bin/alerta-load-average.sh
-  #
-  # Copia o arquivo de tarefa agendada para o diretório do cron.
-  cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
-  # Garante as permissões corretas para o arquivo cron, por segurança.
-  chmod 644 /etc/cron.d/cron-alerta-load-average
+# Aumenta a memória disponível para os buffers de rede
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+net.ipv4.tcp_rmem=4096 87380 16777216
+net.ipv4.tcp_wmem=4096 65536 16777216
 
-  # --- Manutenção Semanal Automática ---
-  log "Copiando cron de atualização e reboot semanal..."
-  cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
-  chmod 644 /etc/cron.d/cron-reboot-semanal
+# Aumenta o número máximo de conexões rastreadas pelo firewall
+net.netfilter.nf_conntrack_max=1048576
 
-  log "Script de monitoramento de disco instalado e agendado."
+# Desativa IPv6, se não for utilizado, para simplificar a pilha de rede.
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+EOF
+
+  # Aplica as novas configurações do kernel imediatamente, sem precisar reiniciar.
+  sysctl -p /etc/sysctl.d/99-web-optimizations.conf >/dev/null
+  log "Parâmetros do kernel de rede otimizados."
 }
 
 #######################################################################
@@ -502,7 +591,46 @@ EOF
 }
 
 #######################################################################
-# PARTE 9: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 9: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+#######################################################################
+deploy_utility_scripts() {
+
+  # --- Monitoramento de Disco ---
+  log "Instalando scripts de utilidade (monitoramento de disco)..."
+  #
+  # Copia o script de monitoramento para o diretório de binários locais.
+  cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
+  # Garante que o script seja executável.
+  chmod +x /usr/local/bin/alerta-espaco-disco.sh
+  #
+  # Copia a tarefa agendada para o diretório do cron.
+  cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
+  # Garante as permissões corretas para o arquivo cron.
+  chmod 644 /etc/cron.d/cron-alerta-espaco-disco
+
+  # --- Monitoramento de Carga do Servidor ---
+  log "Copiando script de monitoramento de carga (load average)..."
+  #
+  # Copia o script de alerta de carga para o diretório de binários locais do sistema.
+  cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
+  # Torna o script executável para que possa ser chamado pelo cron.
+  chmod +x /usr/local/bin/alerta-load-average.sh
+  #
+  # Copia o arquivo de tarefa agendada para o diretório do cron.
+  cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
+  # Garante as permissões corretas para o arquivo cron, por segurança.
+  chmod 644 /etc/cron.d/cron-alerta-load-average
+
+  # --- Reboot Semanal Automático ---
+  log "Copiando cron de atualização e reboot semanal..."
+  cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
+  chmod 644 /etc/cron.d/cron-reboot-semanal
+
+  log "Script de monitoramento de disco instalado e agendado."
+}
+
+#######################################################################
+# PARTE 10: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 
 setup_config_backup_script() {
@@ -597,6 +725,7 @@ while true; do
   INSTALL_REDIS=""
   INSTALL_SSMTP=""
   INSTALL_FAIL2BAN=""
+  INSTALL_IPTABLES=""
   INSTALL_ELASTICSEARCH=""
 
   # Exibe o menu interativo de perguntas para cada serviço.
@@ -608,6 +737,7 @@ while true; do
   ask_install "redis" "INSTALL_REDIS"
   ask_install "ssmtp" "INSTALL_SSMTP"
   ask_install "fail2ban" "INSTALL_FAIL2BAN"
+  ask_install "iptables_personalizado" "INSTALL_IPTABLES"
   ask_install "elasticsearch" "INSTALL_ELASTICSEARCH"
 
   # Mostra o resumo das opções e pede uma confirmação final.
@@ -629,8 +759,12 @@ log "Confirmação recebida. Prosseguindo com a instalação..."
 # Instala as atualizações do sistema e as ferramentas base.
 install_base_system
 
-# Instala e configura o SSHD do servidor de forma interativa.
-setup_ssh
+# Instala e configura o SSH e o Firewall.
+# A função interna configure_ssh_port() primeiro pergunta a porta SSH e aplica a configuração.
+# Depois a função interna setup_firewall_ufw() configura o firewall UFW.
+setup_ssh_and_firewall
+
+optimize_kernel_network
 
 # Etapa 4: Inicia a instalação dos serviços que foram selecionados pelo usuário.
 # --- Instalação dos Serviços Selecionados ---

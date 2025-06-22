@@ -1,0 +1,54 @@
+*filter
+# Define as políticas padrão. A regra DROP no final garante a segurança.
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+
+# Permite todo o tráfego na interface de loopback (essencial para o funcionamento do sistema).
+-A INPUT -i lo -j ACCEPT
+
+# Descarta pacotes inválidos, uma medida de segurança básica.
+-A INPUT -m conntrack --ctstate INVALID -j DROP
+
+# Permite o retorno de conexões que o próprio servidor iniciou.
+-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# Permite o protocolo ICMP (ping), útil para diagnósticos.
+-A INPUT -p icmp -j ACCEPT
+
+# --- LIBERAÇÃO DE IPS DO CLOUDFLARE ---
+# Se o seu site usa o Cloudflare, estas regras permitem que o
+# seu servidor aceite conexões diretamente dos IPs do Cloudflare.
+#
+-A INPUT -s 103.21.244.0/22 -j ACCEPT
+-A INPUT -s 103.22.200.0/22 -j ACCEPT
+-A INPUT -s 103.31.4.0/22 -j ACCEPT
+-A INPUT -s 104.16.0.0/13 -j ACCEPT
+-A INPUT -s 104.24.0.0/14 -j ACCEPT
+-A INPUT -s 108.162.192.0/18 -j ACCEPT
+-A INPUT -s 131.0.72.0/22 -j ACCEPT
+-A INPUT -s 141.101.64.0/18 -j ACCEPT
+-A INPUT -s 162.158.0.0/15 -j ACCEPT
+-A INPUT -s 172.64.0.0/13 -j ACCEPT
+-A INPUT -s 173.245.48.0/20 -j ACCEPT
+-A INPUT -s 188.114.96.0/20 -j ACCEPT
+-A INPUT -s 190.93.240.0/20 -j ACCEPT
+-A INPUT -s 197.234.240.0/22 -j ACCEPT
+-A INPUT -s 198.41.128.0/17 -j ACCEPT
+
+# --- LIBERAÇÃO DE PORTAS DE SERVIÇOS ---
+
+# Libera a porta SSH. O valor '22222' é um placeholder e será substituído pelo script principal.
+-A INPUT -p tcp -m tcp --dport 22222 -j ACCEPT
+
+# Libera a porta para servidor web (HTTP e HTTPS).
+-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+
+# Libera a porta para envio de e-mail (SMTP).
+-A INPUT -p tcp -m tcp --dport 25 -j ACCEPT
+
+# Bloqueia todo o resto que não foi permitido acima. Esta é a regra mais importante.
+-A INPUT -j DROP
+
+COMMIT
