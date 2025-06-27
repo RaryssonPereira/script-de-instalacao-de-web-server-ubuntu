@@ -515,33 +515,58 @@ optimize_kernel_network() {
   log "Otimizando parâmetros do kernel de rede para alto desempenho..."
 
   # Cria um arquivo de configuração dedicado para as otimizações de rede.
-  # Esta é a abordagem moderna e correta para gerenciar configurações do sysctl.
   cat >/etc/sysctl.d/99-web-optimizations.conf <<EOF
-# Otimizações para servidores web com alto tráfego
+# --- Otimizações para servidores web com alto tráfego ---
+# Aumenta a faixa de portas que o servidor pode usar para conexões de saída.
 net.ipv4.ip_local_port_range=1024 65000
+# Reduz o tempo que conexões finalizadas ficam na memória, liberando recursos mais rápido.
 net.ipv4.tcp_fin_timeout=30
+# Aumenta o número máximo de conexões "finalizadas" que o sistema pode manter, evitando recusas em picos de tráfego.
 net.ipv4.tcp_max_tw_buckets=2000000
+# Aumenta a fila para novas conexões, protegendo contra picos e ataques 'SYN flood'.
 net.ipv4.tcp_max_syn_backlog=20480
+# Aumenta o número máximo de conexões 'órfãs' (sem um processo associado), prevenindo erros de esgotamento.
 net.ipv4.tcp_max_orphans=20000
+# Aumenta o número máximo de conexões que podem aguardar na fila para serem aceitas por um serviço (ex: Nginx).
 net.core.somaxconn=16384
 
-# Aumenta a memória disponível para os buffers de rede
-net.core.rmem_max=16777216
-net.core.wmem_max=16777216
-net.ipv4.tcp_rmem=4096 87380 16777216
-net.ipv4.tcp_wmem=4096 65536 16777216
-
-# Aumenta o número máximo de conexões rastreadas pelo firewall
+# --- Otimizações do Firewall e IPv6 ---
+# Aumenta a tabela de rastreamento de conexões do firewall, evitando que ele descarte pacotes legítimos sob alta carga.
 net.netfilter.nf_conntrack_max=1048576
 
-# Desativa IPv6, se não for utilizado, para simplificar a pilha de rede.
+# --- Otimizações de Memória para Buffers de Rede ---
+# Define o tamanho máximo do buffer de recepção para todas as conexões.
+net.core.rmem_max=16777216
+# Define o tamanho máximo do buffer de envio para todas as conexões.
+net.core.wmem_max=16777216
+# Define os tamanhos (mínimo, padrão, máximo) do buffer de recepção para conexões TCP.
+net.ipv4.tcp_rmem=4096 87380 16777216
+# Define os tamanhos (mínimo, padrão, máximo) do buffer de envio para conexões TCP.
+net.ipv4.tcp_wmem=4096 65536 16777216
+
+# Desativa o IPv6 em todas as interfaces, se o protocolo não for utilizado.
 net.ipv6.conf.all.disable_ipv6 = 1
+# Desativa o IPv6 também para novas interfaces que possam ser criadas no futuro.
 net.ipv6.conf.default.disable_ipv6 = 1
 EOF
 
   # Aplica as novas configurações do kernel imediatamente, sem precisar reiniciar.
   sysctl -p /etc/sysctl.d/99-web-optimizations.conf >/dev/null
   log "Parâmetros do kernel de rede otimizados."
+
+  # --- Configuração Opcional para /tmp em RAM (tmpfs) ---
+  # O trecho abaixo configura o diretório /tmp para ser armazenado na memória RAM.
+  #
+  # VANTAGEM: Performance extremamente alta para operações de I/O em arquivos temporários.
+  # RISCO: Se /tmp encher, ele pode consumir TODA a RAM do servidor, causando instabilidade e travamentos.
+  #
+  # QUANDO DESCOMENTAR? Apenas se você souber o que está fazendo e seu servidor tiver memória RAM de sobra.
+  #
+  log "Configurando /tmp para usar tmpfs (armazenamento em RAM)..."
+  # # Adiciona a linha ao fstab para montar /tmp como tmpfs na inicialização.
+  # # A opção 'size=1G' é um limite de segurança crucial para evitar o consumo total da RAM.
+  echo "tmpfs /tmp tmpfs defaults,size=1G,noatime,nosuid,nodev,noexec 0 0" >>/etc/fstab
+  log "AVISO: /tmp foi configurado para usar a memória RAM. Esta mudança requer uma REINICIALIZAÇÃO para ter efeito."
 }
 
 #######################################################################
@@ -712,10 +737,10 @@ EOF
 
 # --- EXECUÇÃO PRINCIPAL ---
 
-# Etapa 1: Chama a função para configurar o hostname do servidor.
+# Etapa 1: Configuração inicial do hostname.
 configure_hostname
 
-# Etapa 2: Inicia um laço que permite ao usuário refazer a seleção de pacotes se errar.
+# Etapa 2: Laço interativo para seleção de pacotes e confirmação final.
 while true; do
   # Reseta as variáveis de instalação a cada vez que o laço recomeça.
   INSTALL_NGINX=""
@@ -743,46 +768,34 @@ while true; do
   # Mostra o resumo das opções e pede uma confirmação final.
   confirm_selections
 
-  # Verifica a resposta do usuário: se for 'S' (código 0), quebra o laço.
+  # Se o usuário confirmar com 'S', sai do laço e prossegue.
   if [ $? -eq 0 ]; then
     break
-  # Se for 'N' (código 1), informa o usuário e o laço recomeça.
+  # Se o usuário digitar 'N', o laço recomeça.
   else
     log "Seleção cancelada. Por favor, responda às perguntas novamente."
     echo
   fi
 done
 
-# Etapa 3: Após a confirmação, prossegue com as instalações.
 log "Confirmação recebida. Prosseguindo com a instalação..."
 
-# Instala as atualizações do sistema e as ferramentas base.
+# Etapa 3: Instalações e configurações base do sistema.
 install_base_system
-
-# Instala e configura o SSH e o Firewall.
-# A função interna configure_ssh_port() primeiro pergunta a porta SSH e aplica a configuração.
-# Depois a função interna setup_firewall_ufw() configura o firewall UFW.
 setup_ssh_and_firewall
-
 optimize_kernel_network
 
-# Etapa 4: Inicia a instalação dos serviços que foram selecionados pelo usuário.
-# --- Instalação dos Serviços Selecionados ---
-
-# Instala o SSMTP se o usuário escolheu 'S'.
+# Etapa 4: Instalação dos serviços selecionados pelo usuário.
 if [[ "$INSTALL_SSMTP" == "S" ]]; then
   install_ssmtp
 fi
-
 # (As partes de instalação do Nginx, Apache, etc., virão aqui)
 
-# Instala os scripts de utilidade (monitoramento de disco e carga).
+# Etapa 5: Instalação das ferramentas de suporte (utilitários e backup).
 deploy_utility_scripts
-
-# Etapa 5: Cria e agenda o script de backup de configurações como uma ação padrão.
 setup_config_backup_script
 
-# Etapa 6: Finaliza o script.
+# Etapa 6: Finalização do script.
 log "Script finalizado com sucesso."
 # Cria o arquivo de log para impedir futuras execuções.
 date >"$LOG_FILE"
