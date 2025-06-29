@@ -1,0 +1,23 @@
+# Arquivo de configuração para a ferramenta mytop.
+# Permite que você execute o comando 'mytop' sem precisar digitar a senha.
+
+# O usuário do MySQL que será usado para a conexão.
+user=root
+# A senha para o usuário root (deve ser a mesma definida no script).
+pass=uz@r&*2#^Pj9#V&5u5nJ
+# O servidor do banco de dados (geralmente localhost, pois o banco está na mesma máquina).
+host=localhost
+# O banco de dados inicial ao qual o mytop irá se conectar.
+db=mysql
+# O intervalo de atualização da tela, em segundos.
+delay=5
+# A porta de rede do servidor MySQL.
+port=3306
+# O caminho para o arquivo de socket do MySQL (deixar em branco usa a conexão de rede).
+socket=
+# Modo de execução: 0 para interativo (padrão), 1 para não-interativo.
+batchmode=0
+# Habilita (1) ou desabilita (0) o uso de cores na interface.
+color=1
+# Mostra (1) ou esconde (0) as conexões que estão inativas (no estado "Sleep").
+idle=1

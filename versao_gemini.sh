@@ -16,9 +16,11 @@
 # - Parte 5: Atualização do sistema e instalação de ferramentas base.
 # - Parte 6: Configuração do SSH e do Firewall.
 # - Parte 7: Otimização do Kernel de Rede.
-# - Parte 8: Configuração do retransmissor de e-mail (SMTP).
-# - Parte 9: Deploy de scripts e crons de utilidade.
-# - Parte 10: Criação de um script de backup de configurações.
+# - Parte 8: Deploy de scripts e crons de utilidade.
+# - Parte 9: Instalação do SSMTP.
+# - Parte 10: Instalação do MySQL.
+# - Parte 11: Instalação do Nginx.
+# - Parte 12: Criação do script de backup de configurações.
 #
 #######################################################################
 
@@ -570,7 +572,61 @@ EOF
 }
 
 #######################################################################
-# PARTE 8: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
+# PARTE 8: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+#######################################################################
+deploy_utility_scripts() {
+
+  # --- Monitoramento de Disco ---
+  log "Instalando scripts de utilidade (monitoramento de disco)..."
+  #
+  # Copia o script de monitoramento para o diretório de binários locais.
+  cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
+  # Garante que o script seja executável.
+  chmod +x /usr/local/bin/alerta-espaco-disco.sh
+  #
+  # Copia a tarefa agendada para o diretório do cron.
+  cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
+  # Garante as permissões corretas para o arquivo cron.
+  chmod 644 /etc/cron.d/cron-alerta-espaco-disco
+
+  # --- Monitoramento de Carga do Servidor ---
+  log "Copiando script de monitoramento de carga (load average)..."
+  #
+  # Copia o script de alerta de carga para o diretório de binários locais do sistema.
+  cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
+  # Torna o script executável para que possa ser chamado pelo cron.
+  chmod +x /usr/local/bin/alerta-load-average.sh
+  #
+  # Copia o arquivo de tarefa agendada para o diretório do cron.
+  cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
+  # Garante as permissões corretas para o arquivo cron, por segurança.
+  chmod 644 /etc/cron.d/cron-alerta-load-average
+
+  # --- Reboot Semanal Automático ---
+  log "Copiando cron de atualização e reboot semanal..."
+  cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
+  chmod 644 /etc/cron.d/cron-reboot-semanal
+
+  # --- Manutenção e Backup do Banco de Dados ---
+  log "Copiando script e cron de manutenção e backup do banco de dados..."
+  #
+  cp backup-bancos.sh /usr/local/bin/backup-bancos.sh
+  chmod +x /usr/local/bin/backup-bancos.sh
+  #
+  cp cron-backup-bancos /etc/cron.d/cron-backup-bancos
+  chmod 644 /etc/cron.d/cron-backup-bancos
+
+  # --- Configuração Personalizada do MySQL ---
+  log "Copiando arquivo de configuração personalizada do MySQL..."
+  #
+  cp mysql.cnf /etc/mysql/conf.d/mysql.cnf
+  chmod 644 /etc/mysql/conf.d/mysql.cnf
+
+  log "Script de monitoramento de disco instalado e agendado."
+}
+
+#######################################################################
+# PARTE 9: INSTALAÇÃO DO RETRANSMISSOR DE E-MAIL (SSMTP)
 #######################################################################
 
 install_ssmtp() {
@@ -616,46 +672,110 @@ EOF
 }
 
 #######################################################################
-# PARTE 9: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
+# PARTE 10: INSTALAÇÃO DO MYSQL (PERCONA SERVER)
 #######################################################################
-deploy_utility_scripts() {
+install_mysql() {
+  # Exibe a mensagem de início da função.
+  log "Iniciando a instalação do Percona Server for MySQL 8.0..."
 
-  # --- Monitoramento de Disco ---
-  log "Instalando scripts de utilidade (monitoramento de disco)..."
-  #
-  # Copia o script de monitoramento para o diretório de binários locais.
-  cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
-  # Garante que o script seja executável.
-  chmod +x /usr/local/bin/alerta-espaco-disco.sh
-  #
-  # Copia a tarefa agendada para o diretório do cron.
-  cp cron-alerta-espaco-disco /etc/cron.d/cron-alerta-espaco-disco
-  # Garante as permissões corretas para o arquivo cron.
-  chmod 644 /etc/cron.d/cron-alerta-espaco-disco
+  # --- Configuração do Repositório Percona ---
+  # Informa ao usuário que o repositório está sendo configurado.
+  log "Configurando o repositório do Percona Server..."
+  # Baixa o pacote que configura os repositórios oficiais da Percona.
+  wget https://repo.percona.com/apt/percona-release_latest.$(lsb_release -sc)_all.deb -O percona-release.deb
+  # Instala o pacote de configuração do repositório.
+  dpkg -i percona-release.deb
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
+  apt-get update -qq
+  # Configura o sistema para usar os pacotes da série 8.0 do Percona Server.
+  percona-release setup ps80
 
-  # --- Monitoramento de Carga do Servidor ---
-  log "Copiando script de monitoramento de carga (load average)..."
-  #
-  # Copia o script de alerta de carga para o diretório de binários locais do sistema.
-  cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
-  # Torna o script executável para que possa ser chamado pelo cron.
-  chmod +x /usr/local/bin/alerta-load-average.sh
-  #
-  # Copia o arquivo de tarefa agendada para o diretório do cron.
-  cp cron-alerta-load-average /etc/cron.d/cron-alerta-load-average
-  # Garante as permissões corretas para o arquivo cron, por segurança.
-  chmod 644 /etc/cron.d/cron-alerta-load-average
+  # --- Pré-configuração da Senha ---
+  # Define a senha padrão para o usuário 'root' do MySQL.
+  local mysql_root_password="uz@r&*2#^Pj9#V&5u5nJ"
+  # Informa ao usuário que a senha está sendo pré-configurada.
+  log "Pré-configurando a senha do usuário root do MySQL..."
+  # Responde automaticamente à pergunta sobre a senha do root, evitando a interrupção do script.
+  echo "percona-server-server percona-server-server/root_password password $mysql_root_password" | debconf-set-selections
+  # Confirma a senha para o instalador.
+  echo "percona-server-server percona-server-server/root_password_again password $mysql_root_password" | debconf-set-selections
 
-  # --- Reboot Semanal Automático ---
-  log "Copiando cron de atualização e reboot semanal..."
-  cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
-  chmod 644 /etc/cron.d/cron-reboot-semanal
+  # --- Instalação dos Pacotes ---
+  # Informa ao usuário que a instalação dos pacotes está começando.
+  log "Instalando o Percona Server 8.0 e as ferramentas..."
+  # Instala o servidor Percona e as ferramentas de monitoramento e otimização.
+  apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    percona-server-server percona-toolkit mysqltuner mytop
 
-  log "Script de monitoramento de disco instalado e agendado."
+  # --- Configuração dos Clientes MySQL ---
+  # Cria o arquivo .my.cnf para permitir o login do root sem digitar a senha no terminal.
+  cat >/root/.my.cnf <<EOF
+[client]
+user=root
+password="$mysql_root_password"
+EOF
+  # Define permissões restritas ao arquivo, para que apenas o usuário root possa lê-lo.
+  chmod 600 /root/.my.cnf
+  # Copia o arquivo de configuração pré-definido para o mytop.
+  cp .mytop /root/
+  # Define permissões restritas ao arquivo .mytop.
+  chmod 600 /root/.mytop
+
+  # --- Otimização de Limite de Arquivos Abertos ---
+  # Informa ao usuário que o limite de arquivos será aumentado.
+  log "Aumentando o limite de arquivos abertos para o MySQL..."
+  # Cria um diretório de override para o serviço do MySQL.
+  mkdir -p /etc/systemd/system/mysql.service.d/
+  # Cria um arquivo de configuração para definir um novo limite de arquivos abertos.
+  cat >/etc/systemd/system/mysql.service.d/override.conf <<EOF
+[Service]
+LimitNOFILE=100000
+EOF
+
+  # Recarrega a configuração do systemd para ler o novo arquivo de override.
+  systemctl daemon-reload
+
+  # --- Hardening da Instalação ---
+  # Informa ao usuário que o script de segurança será executado.
+  log "Executando 'mysql_secure_installation' para hardening..."
+  # Alimenta o script de segurança com respostas automáticas para aplicar as melhores práticas.
+  mysql_secure_installation <<EOF
+
+y
+2
+n
+y
+y
+y
+EOF
+
+  # Reinicia o serviço MySQL para aplicar todas as configurações.
+  log "Reiniciando o serviço MySQL para aplicar as novas configurações..."
+  systemctl restart mysql
+
+  # --- Aviso Final ---
+  # Exibe um aviso importante para o usuário sobre a senha padrão.
+  log "------------------------- ATENÇÃO: SENHA PADRÃO -------------------------"
+  log "Uma senha padrão para o usuário 'root' do MySQL foi definida."
+  log "É ALTAMENTE RECOMENDADO que você altere esta senha o mais rápido possível."
+  log "A senha foi salva no arquivo: /root/.my.cnf"
+  log "Lembre-se de atualizar também o arquivo /root/.mytop se alterar a senha."
+  log "-------------------------------------------------------------------------"
+
+  # Informa que a instalação desta parte foi concluída.
+  log "Instalação do Percona Server concluída."
 }
 
 #######################################################################
-# PARTE 10: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 11: INSTALAÇÃO DO NGINX
+#######################################################################
+install_nginx() {
+  log "Iniciando a instalação do Nginx..."
+  # O código de instalação do Nginx virá aqui.
+}
+
+#######################################################################
+# PARTE 12: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 
 setup_config_backup_script() {
@@ -789,7 +909,15 @@ optimize_kernel_network
 if [[ "$INSTALL_SSMTP" == "S" ]]; then
   install_ssmtp
 fi
-# (As partes de instalação do Nginx, Apache, etc., virão aqui)
+
+if [[ "$INSTALL_MYSQL" == "S" ]]; then
+  install_mysql
+fi
+
+if [[ "$INSTALL_NGINX" == "S" ]]; then
+  install_nginx
+fi
+# (As partes de instalação do Apache, etc., virão aqui)
 
 # Etapa 5: Instalação das ferramentas de suporte (utilitários e backup).
 deploy_utility_scripts

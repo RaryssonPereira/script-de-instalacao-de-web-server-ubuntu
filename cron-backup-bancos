@@ -1,0 +1,33 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Tarefas agendadas para manutenção e backup do banco de dados.
+
+# -----------------------------------------------------------------------------
+# Tarefa 1: Backup diário dos bancos de dados.
+#
+# Executa o script de backup todo dia à 1:00 da manhã.
+0 1 * * * root    /usr/local/bin/backup-bancos.sh > /var/log/backup-bancos.log 2>&1
+# -----------------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------------
+# Tarefa 2 (Avançada): Mata automaticamente consultas lentas.
+#
+# A cada 2 horas, inicia um processo que monitora e mata queries com mais de 40 segundos.
+# ATENÇÃO: Use com cuidado. Pode interromper processos legítimos e demorados.
+0 */2 * * * root   /usr/bin/pt-kill --daemonize --victims all --busy-time 40 --ignore-user root --kill --config /root/.my.cnf > /var/log/pt-kill.log  2>&1
+# -----------------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------------
+# Tarefa 3 (Opcional): Limpeza de processos pt-kill antigos.
+#
+# Se você usar a Tarefa 2, pode descomentar esta linha para garantir que processos
+# antigos do pt-kill sejam finalizados antes de um novo iniciar (roda todo dia 01:55).
+# 55 1 * * * root    ps -efw | grep pt-kill | grep -v grep | awk '{print $2}' | xargs -r kill
+#
+# Para executar a limpeza a cada dois dias, use a linha abaixo em vez da anterior.
+55 1 */2 * * root    ps -efw | grep pt-kill | grep -v grep | awk '{print $2}' | xargs -r kill
+# -----------------------------------------------------------------------------
+
