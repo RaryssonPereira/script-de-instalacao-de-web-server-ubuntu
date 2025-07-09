@@ -1,5 +1,5 @@
-# Define o PATH para que comandos usados nas tarefas agendadas sejam encontrados corretamente
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # === CRON WORDPRESS ===
 # Edite o caminho /var/www/projeto abaixo para o caminho real do seu site WordPress

@@ -1,4 +1,5 @@
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Converter imagens recém-modificadas para WebP a cada 3 minutos
 # Para ativar, remova o # e edite o caminho do projeto corretamente:

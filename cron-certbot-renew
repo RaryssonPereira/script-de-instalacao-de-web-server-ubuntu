@@ -1,4 +1,5 @@
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # === Renovação automática de certificados SSL com Certbot ===
 # Executa mensalmente, dia 1 às 00:05, e renova apenas se necessário.

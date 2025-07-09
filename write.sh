@@ -30,7 +30,7 @@ if [[ "$INSTALL_NGINX" == "S" ]]; then
     # Pergunta ao usuário se deseja configurar um projeto Nginx (estrutura em /var/www/projeto)
     echo
     echo 'Deseja configurar um projeto em /var/www/?'
-    echo 'Digite o nome do projeto (ex: google ou laminas-framework) ou "N" para pular:'
+    echo 'Digite o nome do projeto (ex: nome-do-site ou nome-do-sistema) ou "N" para pular:'
     read projectname
 
     # Enquanto o usuário não digitar nada, continua pedindo uma entrada válida
@@ -105,6 +105,11 @@ if [[ "$INSTALL_NGINX" == "S" ]]; then
         # Cria um link simbólico em sites-enabled para ativar o virtual host
         ln -s "/etc/nginx/sites-available/$domainname.conf" "/etc/nginx/sites-enabled/$domainname.conf"
     fi
+
+
+
+
+    
 
     # Comenta a diretiva log_format no nginx.conf (caso esteja ativa), desabilitando o formato de log global
     sed -i -r "s/log_format /#log_format/g" "/etc/nginx/nginx.conf"

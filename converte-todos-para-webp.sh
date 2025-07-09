@@ -11,7 +11,7 @@
 
 # Verifica se o comando 'cwebp' está disponível no sistema
 if ! command -v cwebp &> /dev/null; then
-    echo "🔧 O utilitário 'cwebp' não está instalado. Instalando automaticamente..."
+    echo "O utilitário 'cwebp' não está instalado. Instalando automaticamente..."
 
     # Atualiza a lista de pacotes e instala o pacote 'webp', que contém o comando cwebp
     sudo apt update && sudo apt install -y webp
@@ -23,7 +23,7 @@ fi
 
 # Se o primeiro argumento ($1) estiver vazio ou não for um diretório válido
 if [ -z "$1" ] || [ ! -d "$1" ]; then
-    echo "❌ Por favor, forneça um diretório válido como argumento."
+    echo "Por favor, forneça um diretório válido como argumento."
     echo "Uso correto: bash converte-todos-para-webp.sh /var/www/site/wp-content/uploads"
     exit 1  # Encerra o script com código de erro
 fi
@@ -32,7 +32,7 @@ fi
 DIRETORIO="$1"
 
 # Mostra qual diretório será processado
-echo "✅ Iniciando conversão no diretório: $DIRETORIO"
+echo "Iniciando conversão no diretório: $DIRETORIO"
 
 # ---------------------------------------------------------
 # ETAPA 3: Busca e armazena todas as imagens do diretório
@@ -71,17 +71,17 @@ while IFS= read -r arquivo; do
         # Compara datas: se o arquivo original for mais novo que o .webp
         if [ "$arquivo" -nt "$arquivo_webp" ]; then
             echo -e '\n########################################################################'
-            echo "📸 [$posicao_atual/$quantidade_de_imagens] Atualizando versão webp de $nome_arquivo"
+            echo "[$posicao_atual/$quantidade_de_imagens] Atualizando versão webp de $nome_arquivo"
             cwebp "$arquivo" -o "$arquivo_webp"
             echo '########################################################################'
         else
             # Se o .webp já está atualizado, exibe aviso e segue para a próxima imagem
-            echo "✔️ [$posicao_atual/$quantidade_de_imagens] Versão webp de $nome_arquivo já está atualizada."
+            echo "[$posicao_atual/$quantidade_de_imagens] Versão webp de $nome_arquivo já está atualizada."
         fi
     else
         # Se o arquivo .webp ainda não existe, cria a nova versão
         echo -e '\n########################################################################'
-        echo "🆕 [$posicao_atual/$quantidade_de_imagens] Criando versão webp de $nome_arquivo"
+        echo "[$posicao_atual/$quantidade_de_imagens] Criando versão webp de $nome_arquivo"
         cwebp "$arquivo" -o "$arquivo_webp"
         echo '########################################################################'
     fi
@@ -96,4 +96,4 @@ done < "$arquivo_de_imagens"
 rm -f "$arquivo_de_imagens"
 
 # Exibe mensagem de conclusão
-echo "✅ Conversão finalizada com sucesso."
+echo "Conversão finalizada com sucesso."

@@ -575,9 +575,10 @@ EOF
 # PARTE 8: DEPLOY DE SCRIPTS E CRONS DE UTILIDADE
 #######################################################################
 deploy_utility_scripts() {
+  log "Instalando scripts e crons de utilidade..."
 
   # --- Monitoramento de Disco ---
-  log "Instalando scripts de utilidade (monitoramento de disco)..."
+  log "Adicionando o script e cron de monitoramento de disco (alerta-espaco-disco.sh)..."
   #
   # Copia o script de monitoramento para o diretório de binários locais.
   cp alerta-espaco-disco.sh /usr/local/bin/alerta-espaco-disco.sh
@@ -590,7 +591,7 @@ deploy_utility_scripts() {
   chmod 644 /etc/cron.d/cron-alerta-espaco-disco
 
   # --- Monitoramento de Carga do Servidor ---
-  log "Copiando script de monitoramento de carga (load average)..."
+  log "Adicionando script e cron de monitoramento de carga (alerta-load-average.sh)..."
   #
   # Copia o script de alerta de carga para o diretório de binários locais do sistema.
   cp alerta-load-average.sh /usr/local/bin/alerta-load-average.sh
@@ -603,12 +604,13 @@ deploy_utility_scripts() {
   chmod 644 /etc/cron.d/cron-alerta-load-average
 
   # --- Reboot Semanal Automático ---
-  log "Copiando cron de atualização e reboot semanal..."
+  log "Adicionando cron de atualização e reboot semanal..."
+  #
   cp cron-reboot-semanal /etc/cron.d/cron-reboot-semanal
   chmod 644 /etc/cron.d/cron-reboot-semanal
 
   # --- Manutenção e Backup do Banco de Dados ---
-  log "Copiando script e cron de manutenção e backup do banco de dados..."
+  log "Adicionando script e cron de manutenção e backup do banco de dados..."
   #
   cp backup-bancos.sh /usr/local/bin/backup-bancos.sh
   chmod +x /usr/local/bin/backup-bancos.sh
@@ -617,12 +619,51 @@ deploy_utility_scripts() {
   chmod 644 /etc/cron.d/cron-backup-bancos
 
   # --- Configuração Personalizada do MySQL ---
-  log "Copiando arquivo de configuração personalizada do MySQL..."
+  log "Adicionando arquivo de configuração personalizada do MySQL..."
   #
   cp mysql.cnf /etc/mysql/conf.d/mysql.cnf
   chmod 644 /etc/mysql/conf.d/mysql.cnf
 
-  log "Script de monitoramento de disco instalado e agendado."
+  # --- Configuração de Otimização de Imagem (WebP) ---
+  log "Adicionando arquivo de configuração para otimização de imagens WebP..."
+  #
+  cp webp.conf /etc/nginx/conf.d/webp.conf
+  chmod 644 /etc/nginx/conf.d/webp.conf
+
+  # --- Cron e Script para Conversão de Imagens para WebP ---
+  log "Copiando cron e script para conversão de imagens para WebP..."
+  #
+  cp converte_webp_antes_3min.sh /usr/local/bin/converte_webp_antes_3min.sh
+  chmod +x /usr/local/bin/converte_webp_antes_3min.sh
+  #
+  cp converte_webp_apos_3min.sh /usr/local/bin/converte_webp_apos_3min.sh
+  chmod +x /usr/local/bin/converte_webp_apos_3min.sh
+  #
+  cp converte-todos-para-webp.sh /usr/local/bin/converte-todos-para-webp.sh
+  chmod +x /usr/local/bin/converte-todos-para-webp.sh
+  #
+  cp cron-conversao-webp /etc/cron.d/cron-conversao-webp
+  chmod 644 /etc/cron.d/cron-conversao-webp
+
+  # --- Cron para Tarefas do WordPress ---
+  log "Adicionando cron para tarefas do WordPress (cron-wp-uploads)..."
+  #
+  cp cron-wp-uploads /etc/cron.d/cron-wp-uploads
+  chmod 644 /etc/cron.d/cron-wp-uploads
+
+  # --- Cron para Renovação de Certificados SSL ---
+  log "Adicionando cron para renovação automática de certificados SSL (cron-certbot-renew)..."
+  #
+  cp cron-certbot-renew /etc/cron.d/cron-certbot-renew
+  chmod 644 /etc/cron.d/cron-certbot-renew
+
+  # --- Verificação de Certificados SSL ---
+  log "Adicionando script de verificação de certificados SSL (verificar-certificados-ssl.sh)..."
+  #
+  cp verificar-certificados-ssl.sh /usr/local/bin/verificar-certificados-ssl.sh
+  chmod +x /usr/local/bin/verificar-certificados-ssl.sh
+
+  log "Scripts e crons adicionados e agendados com sucesso."
 }
 
 #######################################################################
@@ -676,7 +717,38 @@ EOF
 #######################################################################
 install_mysql() {
   # Exibe a mensagem de início da função.
-  log "Iniciando a instalação do Percona Server for MySQL 8.0..."
+  log "Iniciando a instalação do Percona Server for MySQL..."
+
+  # --- Seleção da Versão ---
+  # Declara variáveis locais para armazenar a string da versão e o nome do pacote.
+  local percona_version_string
+  local percona_package_name
+  local version_choice
+
+  # Exibe um menu de opções para o usuário escolher a versão do MySQL.
+  log "----------------- SELEÇÃO DA VERSÃO DO MYSQL -----------------"
+  log "Escolha a versão do Percona Server a ser instalada."
+  log "[1] 8.0 - Versão mais recente e recomendada."
+  log "[2] 5.7 - Versão mais antiga para compatibilidade com sistemas legados."
+  log "------------------------------------------------------------"
+  # Lê a escolha do usuário.
+  read -p ">> Escolha uma opção [padrão: 1]: " version_choice
+
+  # Trata a escolha do usuário com uma estrutura 'case'.
+  case "$version_choice" in
+  2)
+    # Se a escolha for '2', define as variáveis para a versão 5.7.
+    log "Versão 5.7 selecionada."
+    percona_version_string="ps57"
+    percona_package_name="percona-server-server-5.7"
+    ;;
+  *)
+    # Para qualquer outra escolha, usa a versão 8.0 como padrão.
+    log "Versão 8.0 selecionada (padrão)."
+    percona_version_string="ps80"
+    percona_package_name="percona-server-server"
+    ;;
+  esac
 
   # --- Configuração do Repositório Percona ---
   # Informa ao usuário que o repositório está sendo configurado.
@@ -687,8 +759,8 @@ install_mysql() {
   dpkg -i percona-release.deb
   # Atualiza a lista de pacotes para incluir os do novo repositório.
   apt-get update -qq
-  # Configura o sistema para usar os pacotes da série 8.0 do Percona Server.
-  percona-release setup ps80
+  # Configura o sistema para usar os pacotes da versão escolhida (ps80 ou ps57).
+  percona-release setup "$percona_version_string"
 
   # --- Pré-configuração da Senha ---
   # Define a senha padrão para o usuário 'root' do MySQL.
@@ -696,16 +768,16 @@ install_mysql() {
   # Informa ao usuário que a senha está sendo pré-configurada.
   log "Pré-configurando a senha do usuário root do MySQL..."
   # Responde automaticamente à pergunta sobre a senha do root, evitando a interrupção do script.
-  echo "percona-server-server percona-server-server/root_password password $mysql_root_password" | debconf-set-selections
+  echo "$percona_package_name $percona_package_name/root_password password $mysql_root_password" | debconf-set-selections
   # Confirma a senha para o instalador.
-  echo "percona-server-server percona-server-server/root_password_again password $mysql_root_password" | debconf-set-selections
+  echo "$percona_package_name $percona_package_name/root_password_again password $mysql_root_password" | debconf-set-selections
 
   # --- Instalação dos Pacotes ---
   # Informa ao usuário que a instalação dos pacotes está começando.
-  log "Instalando o Percona Server 8.0 e as ferramentas..."
+  log "Instalando o Percona Server e as ferramentas..."
   # Instala o servidor Percona e as ferramentas de monitoramento e otimização.
   apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    percona-server-server percona-toolkit mysqltuner mytop
+    "$percona_package_name" percona-toolkit mysqltuner mytop
 
   # --- Configuração dos Clientes MySQL ---
   # Cria o arquivo .my.cnf para permitir o login do root sem digitar a senha no terminal.
@@ -731,7 +803,6 @@ EOF
 [Service]
 LimitNOFILE=100000
 EOF
-
   # Recarrega a configuração do systemd para ler o novo arquivo de override.
   systemctl daemon-reload
 
@@ -770,14 +841,102 @@ EOF
 # PARTE 11: INSTALAÇÃO DO NGINX
 #######################################################################
 install_nginx() {
+  # Exibe a mensagem de início da função.
   log "Iniciando a instalação do Nginx..."
-  # O código de instalação do Nginx virá aqui.
+
+  # --- Instalação dos Pacotes ---
+  # Informa ao usuário que o repositório será adicionado.
+  log "Adicionando o repositório oficial do Nginx e instalando pacotes..."
+  # Baixa a chave GPG do repositório Nginx e a salva de forma segura.
+  curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+  # Adiciona o repositório oficial do Nginx, garantindo que ele use a chave correta.
+  echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/mainline/ubuntu $(lsb_release -cs) nginx" |
+    tee /etc/apt/sources.list.d/nginx.list >/dev/null
+
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
+  apt-get update -qq
+  # Instala o Nginx e as ferramentas de utilidade 'apachetop' (para monitoramento) e 'webp' (para otimização de imagem).
+  apt-get install -qq -y nginx apachetop webp
+
+  # Informa ao usuário que o Certbot será instalado.
+  log "Instalando Certbot para certificados SSL/TLS..."
+  # Adiciona o repositório PPA para ter acesso à versão mais recente do Certbot.
+  add-apt-repository -y ppa:certbot/certbot
+  # Atualiza a lista de pacotes novamente.
+  apt-get update -qq
+  # Instala o Certbot e seu plugin específico para Nginx.
+  apt-get install -qq -y python3-certbot-nginx
+
+  # --- Configuração do Primeiro Projeto (Opcional) ---
+  # Declara variáveis locais para o nome do projeto e do domínio.
+  local project_name
+  local domain_name
+
+  # Pergunta ao usuário se ele deseja configurar um site inicial.
+  echo
+  log "Deseja configurar um site inicial agora?"
+  read -p ">> Digite o nome do projeto (ex: nome-do-site ou nome-do-sistema) ou 'N' para pular: " project_name
+
+  # Se o usuário não digitou 'N' ou 'n', prossegue com a configuração.
+  if [[ "$project_name" != "N" && "$project_name" != "n" ]]; then
+    # Pede o domínio principal do projeto.
+    read -p ">> Digite o domínio do projeto (sem o www): (ex: meusite.com.br ou dominio.com): " domain_name
+
+    # Garante que o usuário digite um domínio.
+    while [[ -z "$domain_name" ]]; do
+      log "ERRO: O domínio não pode ser vazio."
+      read -p ">> Digite o domínio principal: " domain_name
+    done
+
+    log "Configurando o projeto '$project_name' para o domínio '$domain_name'..."
+
+    # Cria o diretório raiz para o projeto.
+    mkdir -p "/var/www/$project_name"
+    # Define o usuário 'www-data' (padrão do Nginx) como dono da pasta.
+    chown -R www-data:www-data "/var/www/$project_name"
+    log "Diretório do projeto criado em /var/www/$project_name"
+
+    # Garante que as pastas de configuração de sites do Nginx existam.
+    mkdir -p /etc/nginx/sites-available
+    mkdir -p /etc/nginx/sites-enabled
+
+    # Verifica se a diretiva para incluir os sites ativados já existe no nginx.conf.
+    if ! grep -q "include /etc/nginx/sites-enabled/*;" /etc/nginx/nginx.conf; then
+      # Se não existir, adiciona a diretiva dentro do bloco 'http'.
+      sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
+      log "Diretiva 'include' adicionada ao nginx.conf."
+    fi
+
+    # Define o caminho para o novo arquivo de configuração do site.
+    local vhost_path="/etc/nginx/sites-available/$domain_name.conf"
+    # Copia o template de configuração para o novo arquivo.
+    cp nginx-site.conf "$vhost_path"
+    # Substitui os placeholders 'DOMINIO' e 'PROJETO' pelos valores inseridos pelo usuário.
+    sed -i "s/DOMINIO/$domain_name/g" "$vhost_path"
+    sed -i "s/PROJETO/$project_name/g" "$vhost_path"
+
+    # Ativa o site criando um link simbólico do 'sites-available' para o 'sites-enabled'.
+    ln -s "$vhost_path" "/etc/nginx/sites-enabled/$domain_name.conf"
+    log "Site '$domain_name' ativado."
+
+    # Testa a sintaxe dos arquivos de configuração do Nginx antes de reiniciar.
+    log "Testando a configuração do Nginx e reiniciando o serviço..."
+    if nginx -t; then
+      # Se a configuração for válida, reinicia o Nginx.
+      systemctl restart nginx
+    else
+      # Se houver erros, avisa o usuário e não reinicia o serviço.
+      log "ERRO: A configuração do Nginx contém erros. O serviço não foi reiniciado."
+    fi
+  fi
+
+  # Exibe a mensagem de conclusão da função.
+  log "Instalação do Nginx e ferramentas associadas concluída."
 }
 
 #######################################################################
 # PARTE 12: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
-
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
   log "Configurando o script de backup de configurações..."
