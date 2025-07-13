@@ -294,6 +294,11 @@ install_base_system() {
     jq byobu net-tools wget whois dnsutils speedtest-cli traceroute \
     build-essential unzip ufw ncdu rsync iotop mlocate lsof iptables-persistent
 
+  # --- Instalação do WP-CLI ---
+  log "Instalando a ferramenta WP-CLI para gerenciamento do WordPress..."
+  wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O /usr/local/bin/wp
+  chmod +x /usr/local/bin/wp
+
   # --- Repositórios Externos ---
   log "Adicionando repositório PPA para o PHP (Ondřej Surý)..."
   # Adiciona um repositório de terceiros confiável para ter acesso a versões mais recentes do PHP.
@@ -841,48 +846,88 @@ EOF
 # PARTE 11: INSTALAÇÃO DO NGINX
 #######################################################################
 install_nginx() {
-  # Exibe a mensagem de início da função.
   log "Iniciando a instalação do Nginx..."
 
   # --- Instalação dos Pacotes ---
-  # Informa ao usuário que o repositório será adicionado.
   log "Adicionando o repositório oficial do Nginx e instalando pacotes..."
-  # Baixa a chave GPG do repositório Nginx e a salva de forma segura.
   curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
-  # Adiciona o repositório oficial do Nginx, garantindo que ele use a chave correta.
   echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/mainline/ubuntu $(lsb_release -cs) nginx" |
     tee /etc/apt/sources.list.d/nginx.list >/dev/null
 
-  # Atualiza a lista de pacotes para incluir os do novo repositório.
   apt-get update -qq
-  # Instala o Nginx e as ferramentas de utilidade 'apachetop' (para monitoramento) e 'webp' (para otimização de imagem).
   apt-get install -qq -y nginx apachetop webp
 
-  # Informa ao usuário que o Certbot será instalado.
   log "Instalando Certbot para certificados SSL/TLS..."
-  # Adiciona o repositório PPA para ter acesso à versão mais recente do Certbot.
   add-apt-repository -y ppa:certbot/certbot
-  # Atualiza a lista de pacotes novamente.
   apt-get update -qq
-  # Instala o Certbot e seu plugin específico para Nginx.
   apt-get install -qq -y python3-certbot-nginx
 
+  # --- Configuração Inicial do Nginx ---
+  log "Configurando vhost padrão de segurança e criando certificado SSL autoassinado..."
+  openssl req -newkey rsa:2048 -x509 -nodes -keyout /etc/nginx/server.key -new -out /etc/nginx/server.crt -subj "/CN=$(hostname)" -config /etc/ssl/openssl.cnf -sha256 -days 3650
+  mkdir -p /var/www/default
+  cp index.html 404.html 50x.html /var/www/default/
+  echo -e "User-agent: *\nDisallow: /" >/var/www/default/robots.txt
+  chown -R www-data:www-data /var/www/default
+  cp default-vhost.conf /etc/nginx/conf.d/default.conf
+  chmod 644 /etc/nginx/conf.d/default.conf
+
+  # --- Otimização do Nginx ---
+  log "Otimizando a configuração do Nginx para melhor performance..."
+  sed -i 's/user  nginx;/user  www-data;/g' /etc/nginx/nginx.conf
+  local cpu_cores
+  cpu_cores=$(nproc)
+  sed -i "s/worker_processes [0-9]\+;/worker_processes $cpu_cores;/g" /etc/nginx/nginx.conf
+  sed -i '/worker_processes/a worker_rlimit_nofile 65535;' /etc/nginx/nginx.conf
+  sed -i "s/worker_connections [0-9]\+;/worker_connections 8192;/g" /etc/nginx/nginx.conf
+  sed -i -r 's/^\s*access_log/#access_log/g' /etc/nginx/nginx.conf
+
+  # --- Configuração da Compressão Gzip ---
+  log "Ativando a compressão Gzip para melhor performance..."
+  cat >/etc/nginx/conf.d/gzip.conf <<EOF
+gzip on;
+gzip_disable "msie6";
+gzip_vary on;
+gzip_proxied any;
+gzip_comp_level 6;
+gzip_buffers 16 8k;
+gzip_http_version 1.1;
+gzip_min_length 256;
+gzip_types
+    application/atom+xml application/javascript application/json application/ld+json
+    application/manifest+json application/rss+xml application/vnd.geo+json
+    application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json
+    application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml
+    image/x-icon text/cache-manifest text/css text/plain text/vcard
+    text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+EOF
+
+  # --- Hardening de Segurança (Nginx Ultimate Bad Bot Blocker) ---
+  log "Instalando o Nginx Ultimate Bad Bot Blocker para proteção adicional..."
+  wget https://raw.githubusercontent.com/mitchellkrogza/nginx-ultimate-bad-bot-blocker/master/install-ngxblocker -O /usr/local/sbin/install-ngxblocker
+  chmod +x /usr/local/sbin/install-ngxblocker
+  (cd /usr/local/sbin/ && /usr/local/sbin/install-ngxblocker -x)
+  log "Bad Bot Blocker instalado."
+
+  # --- Correção da Lista de Bloqueio ---
+  log "Corrigindo a lista de bloqueio para remover IPs conhecidos como falsos positivos..."
+  sed -i "s/89.187.173.66\t\t0;/#89.187.173.66\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
+  sed -i "s/5.188.120.15\t\t0;/#5.188.120.15\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
+  sed -i "s/195.181.163.194\t\t0;/#195.181.163.194\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
+  sed -i "s/143.244.38.129\t\t0;/#143.244.38.129\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
+  sed -i "s/138.199.57.151\t\t0;/#138.199.57.151\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
+
   # --- Configuração do Primeiro Projeto (Opcional) ---
-  # Declara variáveis locais para o nome do projeto e do domínio.
   local project_name
   local domain_name
 
-  # Pergunta ao usuário se ele deseja configurar um site inicial.
   echo
   log "Deseja configurar um site inicial agora?"
   read -p ">> Digite o nome do projeto (ex: nome-do-site ou nome-do-sistema) ou 'N' para pular: " project_name
 
-  # Se o usuário não digitou 'N' ou 'n', prossegue com a configuração.
   if [[ "$project_name" != "N" && "$project_name" != "n" ]]; then
-    # Pede o domínio principal do projeto.
     read -p ">> Digite o domínio do projeto (sem o www): (ex: meusite.com.br ou dominio.com): " domain_name
 
-    # Garante que o usuário digite um domínio.
     while [[ -z "$domain_name" ]]; do
       log "ERRO: O domínio não pode ser vazio."
       read -p ">> Digite o domínio principal: " domain_name
@@ -890,47 +935,40 @@ install_nginx() {
 
     log "Configurando o projeto '$project_name' para o domínio '$domain_name'..."
 
-    # Cria o diretório raiz para o projeto.
+    # Cria a estrutura de diretórios para o projeto.
     mkdir -p "/var/www/$project_name"
-    # Define o usuário 'www-data' (padrão do Nginx) como dono da pasta.
     chown -R www-data:www-data "/var/www/$project_name"
     log "Diretório do projeto criado em /var/www/$project_name"
 
-    # Garante que as pastas de configuração de sites do Nginx existam.
+    # Garante que as pastas de configuração do Nginx existam.
     mkdir -p /etc/nginx/sites-available
     mkdir -p /etc/nginx/sites-enabled
 
-    # Verifica se a diretiva para incluir os sites ativados já existe no nginx.conf.
+    # Verifica e adiciona a diretiva 'include' no nginx.conf se não existir.
     if ! grep -q "include /etc/nginx/sites-enabled/*;" /etc/nginx/nginx.conf; then
-      # Se não existir, adiciona a diretiva dentro do bloco 'http'.
       sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
       log "Diretiva 'include' adicionada ao nginx.conf."
     fi
 
-    # Define o caminho para o novo arquivo de configuração do site.
+    # Copia e personaliza o template de configuração do vhost.
     local vhost_path="/etc/nginx/sites-available/$domain_name.conf"
-    # Copia o template de configuração para o novo arquivo.
     cp nginx-site.conf "$vhost_path"
-    # Substitui os placeholders 'DOMINIO' e 'PROJETO' pelos valores inseridos pelo usuário.
     sed -i "s/DOMINIO/$domain_name/g" "$vhost_path"
     sed -i "s/PROJETO/$project_name/g" "$vhost_path"
 
-    # Ativa o site criando um link simbólico do 'sites-available' para o 'sites-enabled'.
+    # Ativa o site criando um link simbólico.
     ln -s "$vhost_path" "/etc/nginx/sites-enabled/$domain_name.conf"
     log "Site '$domain_name' ativado."
-
-    # Testa a sintaxe dos arquivos de configuração do Nginx antes de reiniciar.
-    log "Testando a configuração do Nginx e reiniciando o serviço..."
-    if nginx -t; then
-      # Se a configuração for válida, reinicia o Nginx.
-      systemctl restart nginx
-    else
-      # Se houver erros, avisa o usuário e não reinicia o serviço.
-      log "ERRO: A configuração do Nginx contém erros. O serviço não foi reiniciado."
-    fi
   fi
 
-  # Exibe a mensagem de conclusão da função.
+  # Reinicia o Nginx para aplicar todas as novas configurações.
+  log "Testando a configuração do Nginx e reiniciando o serviço..."
+  if nginx -t; then
+    systemctl restart nginx
+  else
+    log "ERRO: A configuração do Nginx contém erros. O serviço não foi reiniciado."
+  fi
+
   log "Instalação do Nginx e ferramentas associadas concluída."
 }
 

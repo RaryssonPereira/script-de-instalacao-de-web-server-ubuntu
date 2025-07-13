@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>50x - Erro no Servidor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /*
+         * Estilo geral do corpo da página
+         */
+        body {
+            background-color: #f4f5f7; /* Um cinza muito claro para o fundo */
+            color: #172b4d; /* Cor do texto principal, um azul escuro */
+            font-family: 'Inter', sans-serif; /* Fonte moderna e legível */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* Ocupa a altura total da tela */
+            text-align: center;
+        }
+
+        /*
+         * Container principal para o conteúdo
+         */
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /*
+         * Estilo para o código de erro "50x"
+         */
+        .error-code {
+            font-size: 8rem; /* Tamanho grande para o número */
+            font-weight: 700; /* Negrito */
+            color: #de350b; /* Um tom de vermelho para indicar erro de servidor */
+            margin: 0;
+        }
+
+        /*
+         * Estilo para o título "Erro no Servidor"
+         */
+        .error-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        /*
+         * Estilo para a mensagem de ajuda
+         */
+        .error-message {
+            font-size: 1rem;
+            color: #5e6c84; /* Um cinza mais claro para o texto de suporte */
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        /*
+         * Estilo para o link de "Voltar à página inicial"
+         */
+        .home-link {
+            display: inline-block;
+            background-color: #0052cc; /* Azul para o botão */
+            color: #ffffff; /* Texto branco */
+            padding: 0.8rem 1.5rem;
+            border-radius: 5px; /* Bordas arredondadas */
+            text-decoration: none; /* Remove o sublinhado do link */
+            font-weight: 700;
+            transition: background-color 0.3s ease; /* Efeito suave na mudança de cor */
+        }
+
+        .home-link:hover {
+            background-color: #0065ff; /* Um azul um pouco mais claro ao passar o mouse */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1 class="error-code">50x</h1>
+        <h2 class="error-title">Erro no Servidor</h2>
+        <p class="error-message">
+            Ocorreu um erro interno e não foi possível completar sua solicitação. Nossa equipe já foi notificada. Por favor, tente novamente em alguns instantes.
+        </p>
+        <a href="/" class="home-link">Voltar à Página Inicial</a>
+    </div>
+
+</body>
+</html>
