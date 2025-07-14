@@ -20,7 +20,9 @@
 # - Parte 9: Instalação do SSMTP.
 # - Parte 10: Instalação do MySQL.
 # - Parte 11: Instalação do Nginx.
-# - Parte 12: Criação do script de backup de configurações.
+# - Parte 12: Instalação do Apache.
+# - Parte 13: Instalação do PHP.
+# - Parte 14: Criação do script de backup de configurações.
 #
 #######################################################################
 
@@ -846,44 +848,72 @@ EOF
 # PARTE 11: INSTALAÇÃO DO NGINX
 #######################################################################
 install_nginx() {
+  # Exibe a mensagem de início da função.
   log "Iniciando a instalação do Nginx..."
 
   # --- Instalação dos Pacotes ---
+  # Informa ao usuário que o repositório será adicionado.
   log "Adicionando o repositório oficial do Nginx e instalando pacotes..."
+  # Baixa a chave GPG do repositório Nginx e a salva de forma segura.
   curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+  # Adiciona o repositório oficial do Nginx, garantindo que ele use a chave correta.
   echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/mainline/ubuntu $(lsb_release -cs) nginx" |
     tee /etc/apt/sources.list.d/nginx.list >/dev/null
 
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
   apt-get update -qq
+  # Instala o Nginx e as ferramentas de utilidade 'apachetop' (para monitoramento) e 'webp' (para otimização de imagem).
   apt-get install -qq -y nginx apachetop webp
 
+  # Informa ao usuário que o Certbot será instalado.
   log "Instalando Certbot para certificados SSL/TLS..."
+  # Adiciona o repositório PPA para ter acesso à versão mais recente do Certbot.
   add-apt-repository -y ppa:certbot/certbot
+  # Atualiza a lista de pacotes novamente.
   apt-get update -qq
+  # Instala o Certbot e seu plugin específico para Nginx.
   apt-get install -qq -y python3-certbot-nginx
 
   # --- Configuração Inicial do Nginx ---
+  # Informa ao usuário que a configuração padrão será ajustada.
   log "Configurando vhost padrão de segurança e criando certificado SSL autoassinado..."
+  # Cria um certificado SSL autoassinado para uso padrão e para evitar erros de inicialização do Nginx.
   openssl req -newkey rsa:2048 -x509 -nodes -keyout /etc/nginx/server.key -new -out /etc/nginx/server.crt -subj "/CN=$(hostname)" -config /etc/ssl/openssl.cnf -sha256 -days 3650
+  # Cria o diretório para as páginas padrão (index, 404, 50x).
   mkdir -p /var/www/default
+  # Copia os arquivos HTML para o diretório padrão.
   cp index.html 404.html 50x.html /var/www/default/
+  # Cria um arquivo robots.txt para impedir que buscadores indexem as páginas padrão.
   echo -e "User-agent: *\nDisallow: /" >/var/www/default/robots.txt
+  # Define o usuário 'www-data' como dono do diretório.
   chown -R www-data:www-data /var/www/default
+  # Copia o template do vhost padrão de segurança, que irá "pegar" todo o tráfego não reconhecido.
   cp default-vhost.conf /etc/nginx/conf.d/default.conf
+  # Garante as permissões corretas para o arquivo de configuração.
   chmod 644 /etc/nginx/conf.d/default.conf
 
   # --- Otimização do Nginx ---
+  # Informa ao usuário que as configurações de performance serão aplicadas.
   log "Otimizando a configuração do Nginx para melhor performance..."
+  # Altera o usuário do Nginx para 'www-data' para compatibilidade com o PHP-FPM.
   sed -i 's/user  nginx;/user  www-data;/g' /etc/nginx/nginx.conf
+  # Declara uma variável local para os núcleos da CPU.
   local cpu_cores
+  # Detecta o número de núcleos de CPU do servidor.
   cpu_cores=$(nproc)
+  # Ajusta o número de 'worker_processes' para ser igual ao número de núcleos.
   sed -i "s/worker_processes [0-9]\+;/worker_processes $cpu_cores;/g" /etc/nginx/nginx.conf
+  # Aumenta o limite de arquivos abertos para os processos do Nginx.
   sed -i '/worker_processes/a worker_rlimit_nofile 65535;' /etc/nginx/nginx.conf
+  # Aumenta o número de conexões que cada processo worker pode gerenciar.
   sed -i "s/worker_connections [0-9]\+;/worker_connections 8192;/g" /etc/nginx/nginx.conf
+  # Comenta os logs de acesso globais para favorecer os logs por site.
   sed -i -r 's/^\s*access_log/#access_log/g' /etc/nginx/nginx.conf
 
   # --- Configuração da Compressão Gzip ---
+  # Informa ao usuário que a compressão Gzip será ativada.
   log "Ativando a compressão Gzip para melhor performance..."
+  # Cria um arquivo de configuração dedicado para o Gzip com as melhores práticas.
   cat >/etc/nginx/conf.d/gzip.conf <<EOF
 gzip on;
 gzip_disable "msie6";
@@ -903,14 +933,21 @@ gzip_types
 EOF
 
   # --- Hardening de Segurança (Nginx Ultimate Bad Bot Blocker) ---
+  # Informa ao usuário que a proteção contra bots será instalada.
   log "Instalando o Nginx Ultimate Bad Bot Blocker para proteção adicional..."
+  # Baixa o script de instalação do Bad Bot Blocker.
   wget https://raw.githubusercontent.com/mitchellkrogza/nginx-ultimate-bad-bot-blocker/master/install-ngxblocker -O /usr/local/sbin/install-ngxblocker
+  # Torna o script de instalação executável.
   chmod +x /usr/local/sbin/install-ngxblocker
+  # Executa o instalador a partir de seu próprio diretório para garantir o funcionamento correto.
   (cd /usr/local/sbin/ && /usr/local/sbin/install-ngxblocker -x)
+  # Informa que a instalação foi concluída.
   log "Bad Bot Blocker instalado."
 
   # --- Correção da Lista de Bloqueio ---
+  # Informa ao usuário que a lista de bloqueio será corrigida.
   log "Corrigindo a lista de bloqueio para remover IPs conhecidos como falsos positivos..."
+  # Comenta as linhas dos IPs especificados para removê-los da lista de bloqueio.
   sed -i "s/89.187.173.66\t\t0;/#89.187.173.66\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
   sed -i "s/5.188.120.15\t\t0;/#5.188.120.15\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
   sed -i "s/195.181.163.194\t\t0;/#195.181.163.194\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
@@ -918,16 +955,21 @@ EOF
   sed -i "s/138.199.57.151\t\t0;/#138.199.57.151\t\t0;/g" /etc/nginx/conf.d/globalblacklist.conf
 
   # --- Configuração do Primeiro Projeto (Opcional) ---
+  # Declara variáveis locais para o nome do projeto e do domínio.
   local project_name
   local domain_name
 
+  # Pergunta ao usuário se ele deseja configurar um site inicial.
   echo
   log "Deseja configurar um site inicial agora?"
   read -p ">> Digite o nome do projeto (ex: nome-do-site ou nome-do-sistema) ou 'N' para pular: " project_name
 
+  # Se o usuário não digitou 'N' ou 'n', prossegue com a configuração.
   if [[ "$project_name" != "N" && "$project_name" != "n" ]]; then
+    # Pede o domínio principal do projeto.
     read -p ">> Digite o domínio do projeto (sem o www): (ex: meusite.com.br ou dominio.com): " domain_name
 
+    # Garante que o usuário digite um domínio.
     while [[ -z "$domain_name" ]]; do
       log "ERRO: O domínio não pode ser vazio."
       read -p ">> Digite o domínio principal: " domain_name
@@ -935,45 +977,138 @@ EOF
 
     log "Configurando o projeto '$project_name' para o domínio '$domain_name'..."
 
-    # Cria a estrutura de diretórios para o projeto.
+    # Cria o diretório raiz para o projeto.
     mkdir -p "/var/www/$project_name"
+    # Define o usuário 'www-data' (padrão do Nginx) como dono da pasta.
     chown -R www-data:www-data "/var/www/$project_name"
     log "Diretório do projeto criado em /var/www/$project_name"
 
-    # Garante que as pastas de configuração do Nginx existam.
+    # Garante que as pastas de configuração de sites do Nginx existam.
     mkdir -p /etc/nginx/sites-available
     mkdir -p /etc/nginx/sites-enabled
 
-    # Verifica e adiciona a diretiva 'include' no nginx.conf se não existir.
+    # Verifica se a diretiva para incluir os sites ativados já existe no nginx.conf.
     if ! grep -q "include /etc/nginx/sites-enabled/*;" /etc/nginx/nginx.conf; then
+      # Se não existir, adiciona a diretiva dentro do bloco 'http'.
       sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
       log "Diretiva 'include' adicionada ao nginx.conf."
     fi
 
-    # Copia e personaliza o template de configuração do vhost.
+    # Define o caminho para o novo arquivo de configuração do site.
     local vhost_path="/etc/nginx/sites-available/$domain_name.conf"
+    # Copia o template de configuração para o novo arquivo.
     cp nginx-site.conf "$vhost_path"
+    # Substitui os placeholders 'DOMINIO' e 'PROJETO' pelos valores inseridos pelo usuário.
     sed -i "s/DOMINIO/$domain_name/g" "$vhost_path"
     sed -i "s/PROJETO/$project_name/g" "$vhost_path"
 
-    # Ativa o site criando um link simbólico.
+    # Ativa o site criando um link simbólico do 'sites-available' para o 'sites-enabled'.
     ln -s "$vhost_path" "/etc/nginx/sites-enabled/$domain_name.conf"
     log "Site '$domain_name' ativado."
   fi
 
-  # Reinicia o Nginx para aplicar todas as novas configurações.
+  # Testa a sintaxe dos arquivos de configuração do Nginx antes de reiniciar.
   log "Testando a configuração do Nginx e reiniciando o serviço..."
   if nginx -t; then
+    # Se a configuração for válida, reinicia o Nginx.
     systemctl restart nginx
   else
+    # Se houver erros, avisa o usuário e não reinicia o serviço.
     log "ERRO: A configuração do Nginx contém erros. O serviço não foi reiniciado."
   fi
 
+  # Exibe a mensagem de conclusão da função.
   log "Instalação do Nginx e ferramentas associadas concluída."
 }
 
 #######################################################################
-# PARTE 12: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 12: INSTALAÇÃO DO APACHE
+#######################################################################
+install_apache() {
+  # Exibe a mensagem de início da função.
+  log "Iniciando a instalação do Apache2..."
+  # Instala o servidor web Apache e suas ferramentas de utilidade.
+  apt-get install -qq -y apache2 apache2-utils apachetop webp
+
+  # Informa ao usuário que os módulos essenciais serão ativados.
+  log "Habilitando módulos essenciais do Apache (rewrite, headers, ssl)..."
+  # Ativa o módulo de reescrita de URL, essencial para frameworks e URLs amigáveis.
+  a2enmod rewrite
+  # Ativa o módulo de cabeçalhos, que permite a manipulação de headers HTTP.
+  a2enmod headers
+  # Ativa o módulo SSL, necessário para conexões HTTPS.
+  a2enmod ssl
+
+  # Instala o Certbot e seu plugin para Apache.
+  log "Instalando Certbot para certificados SSL/TLS..."
+  add-apt-repository -y ppa:certbot/certbot
+  apt-get update -qq
+  apt-get install -qq -y python3-certbot-apache
+
+  # --- Configuração do Primeiro Projeto (Opcional) ---
+  # Declara variáveis locais para o nome do projeto e do domínio.
+  local project_name
+  local domain_name
+
+  # Pergunta ao usuário se ele deseja configurar um site inicial.
+  echo
+  log "Deseja configurar um site inicial para o Apache agora?"
+  read -p ">> Digite o nome do projeto (ex: meusite) ou 'N' para pular: " project_name
+
+  # Se o usuário não digitou 'N' ou 'n', prossegue com a configuração.
+  if [[ "$project_name" != "N" && "$project_name" != "n" ]]; then
+    # Pede o domínio principal do projeto.
+    read -p ">> Digite o domínio principal do projeto (ex: meusite.com): " domain_name
+
+    # Garante que o usuário digite um domínio.
+    while [[ -z "$domain_name" ]]; do
+      log "ERRO: O domínio não pode ser vazio."
+      read -p ">> Digite o domínio principal: " domain_name
+    done
+
+    # Informa ao usuário que a configuração do projeto está começando.
+    log "Configurando o projeto '$project_name' para o domínio '$domain_name'..."
+    # Cria o diretório raiz para o projeto.
+    mkdir -p "/var/www/$project_name"
+    # Define o usuário 'www-data' (padrão do Apache) como dono da pasta.
+    chown -R www-data:www-data "/var/www/$project_name"
+
+    # Define o caminho para o novo arquivo de configuração do site.
+    local vhost_path="/etc/apache2/sites-available/$domain_name.conf"
+    # Copia o template de configuração para o novo arquivo.
+    cp apache-site.conf "$vhost_path"
+    # Substitui os placeholders 'DOMINIO' e 'PROJETO' pelos valores inseridos pelo usuário.
+    sed -i "s/DOMINIO/$domain_name/g" "$vhost_path"
+    sed -i "s/PROJETO/$project_name/g" "$vhost_path"
+
+    # Ativa o novo site usando a ferramenta padrão do Apache.
+    a2ensite "$domain_name.conf"
+    log "Site '$domain_name' ativado."
+  fi
+
+  # Testa a sintaxe dos arquivos de configuração do Apache antes de reiniciar.
+  log "Testando a configuração do Apache e reiniciando o serviço..."
+  if apache2ctl configtest; then
+    # Se a configuração for válida, reinicia o Apache.
+    systemctl restart apache2
+  else
+    # Se houver erros, avisa o usuário e não reinicia o serviço.
+    log "ERRO: A configuração do Apache contém erros. O serviço não foi reiniciado."
+  fi
+
+  # Exibe a mensagem de conclusão da função.
+  log "Instalação do Apache concluída."
+}
+
+#######################################################################
+# PARTE 13: INSTALAÇÃO DO PHP
+#######################################################################
+install_php() {
+  log "Iniciando a instalação do PHP..."
+}
+
+#######################################################################
+# PARTE 14: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
@@ -1113,6 +1248,14 @@ fi
 
 if [[ "$INSTALL_NGINX" == "S" ]]; then
   install_nginx
+fi
+
+if [[ "$INSTALL_APACHE" == "S" ]]; then
+  install_apache
+fi
+
+if [[ "$INSTALL_PHP" == "S" ]]; then
+  install_php
 fi
 # (As partes de instalação do Apache, etc., virão aqui)
 
