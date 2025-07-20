@@ -23,7 +23,8 @@
 # - Parte 12: Instalação do Apache.
 # - Parte 13: Instalação do PHP.
 # - Parte 14: Instalação do Redis.
-# - Parte 15: Criação do script de backup de configurações.
+# - Parte 15: Instalação do ElasticSearch.
+# - Parte 16: Criação do script de backup de configurações.
 #
 #######################################################################
 
@@ -161,13 +162,6 @@ ask_install() {
   local package=$1
   local var_name=$2
 
-  # Trava para impedir a instalação de outros pacotes (exceto fail2ban) se Elasticsearch já foi selecionado.
-  if [[ "$INSTALL_ELASTICSEARCH" == "S" && "$package" != "fail2ban" && "$package" != "elasticsearch" ]]; then
-    log "AVISO: Elasticsearch já foi selecionado. Apenas Fail2Ban pode ser instalado em conjunto."
-    printf -v "$var_name" "N"
-    return
-  fi
-
   # Lógica de conflito para impedir que Nginx e Apache sejam instalados juntos.
   if [[ "$package" == "apache" && "$INSTALL_NGINX" == "S" ]]; then
     log "AVISO: Nginx já foi selecionado. Não é possível instalar o Apache."
@@ -184,9 +178,9 @@ ask_install() {
   if [[ "$package" == "elasticsearch" ]]; then
     echo # Linha em branco para espaçamento visual.
     log "--------------------------------------------------------------------"
-    log "ATENÇÃO: Elasticsearch é recomendado para um servidor dedicado."
-    log "Ao confirmar, as outras instalações (Nginx, Apache, MySQL, PHP, Redis) serão desativadas."
-    log "Apenas o Fail2Ban poderá ser instalado em conjunto."
+    log "ATENÇÃO: Elasticsearch consome muitos recursos (RAM e CPU)."
+    log "É altamente recomendado instalá-lo em um servidor dedicado,"
+    log "especialmente em ambientes de produção."
     log "--------------------------------------------------------------------"
   fi
 
@@ -202,16 +196,6 @@ ask_install() {
     read -p "Deseja instalar $package? (S/N): " answer
     answer=${answer^^}
   done
-
-  # Se Elasticsearch for confirmado, força a desativação dos outros serviços conflitantes.
-  if [[ "$package" == "elasticsearch" && "$answer" == "S" ]]; then
-    log "Confirmada a instalação do Elasticsearch. Desativando outros serviços..."
-    INSTALL_NGINX="N"
-    INSTALL_APACHE="N"
-    INSTALL_MYSQL="N"
-    INSTALL_PHP="N"
-    INSTALL_REDIS="N"
-  fi
 
   # Atribui a resposta ('S' ou 'N') à variável de controle global (ex: INSTALL_NGINX="S").
   printf -v "$var_name" "$answer"
@@ -1249,62 +1233,197 @@ EOF
 # PARTE 14: INSTALAÇÃO DO REDIS
 #######################################################################
 install_redis() {
+  # Exibe a mensagem de início da função.
   log "Iniciando a instalação do Redis..."
 
   # --- Instalação dos Pacotes ---
+  # Informa ao usuário que o repositório PPA será adicionado.
   log "Adicionando repositório PPA para o Redis e instalando..."
+  # Adiciona um repositório de terceiros confiável para obter uma versão mais recente do Redis.
   add-apt-repository -y ppa:chris-lea/redis-server
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
   apt-get update -qq
+  # Instala o servidor Redis.
   apt-get install -qq -y redis-server
 
   # --- Otimização de Memória e Performance ---
+  # Informa ao usuário que as configurações de memória serão otimizadas.
   log "Otimizando a configuração do Redis..."
-  # Calcula 25% da memória RAM total em bytes para usar como limite.
+  # Declara uma variável local para a memória total em KB.
   local total_mem_kb
+  # Lê a memória RAM total do sistema a partir do arquivo /proc/meminfo.
   total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  # Declara uma variável local para o limite máximo de memória em bytes.
   local max_memory_bytes
+  # Calcula 25% da memória RAM total em bytes para usar como limite para o Redis.
   max_memory_bytes=$((total_mem_kb * 1024 / 4))
 
-  # Adiciona as configurações de limite de memória e política de evicção.
+  # Adiciona a diretiva 'maxmemory' ao redis.conf para limitar o uso de RAM.
   echo "maxmemory $max_memory_bytes" >>/etc/redis/redis.conf
+  # Define a política de 'evicção' para 'allkeys-lru', que remove a chave menos usada recentemente quando a memória enche.
   echo "maxmemory-policy allkeys-lru" >>/etc/redis/redis.conf
 
   # --- Otimização de Performance do Kernel (THP) ---
+  # Informa ao usuário que o Transparent Huge Pages será desabilitado.
   log "Desabilitando Transparent Huge Pages para otimização do Redis..."
-  # Desabilita o THP na sessão atual.
+  # Desabilita o THP na sessão atual para efeito imediato.
   echo never >/sys/kernel/mm/transparent_hugepage/enabled
-  # Instala o sysfsutils para tornar a mudança permanente.
+  # Instala o 'sysfsutils' para permitir que a configuração do kernel seja tornada permanente.
   apt-get install -qq -y sysfsutils
-  # Adiciona a configuração ao sysfs.conf para que seja aplicada em cada boot.
+  # Adiciona a configuração ao sysfs.conf para que o THP seja desabilitado em cada boot.
   echo "kernel/mm/transparent_hugepage/enabled = never" >>/etc/sysfs.conf
 
   # --- Hardening de Segurança ---
+  # Informa ao usuário que as configurações de segurança serão aplicadas.
   log "Aplicando hardening de segurança ao Redis..."
-  # Garante que o Redis só escute em localhost.
+  # Garante que o Redis só escute em localhost (127.0.0.1), impedindo o acesso externo.
   sed -i "s/^bind 127.0.0.1 ::1/bind 127.0.0.1/" /etc/redis/redis.conf
-  # Gera uma senha aleatória e segura.
+  # Declara uma variável local para a senha do Redis.
   local redis_password
+  # Gera uma senha aleatória e segura de 32 caracteres.
   redis_password=$(openssl rand -base64 32)
-  # Adiciona a senha ao arquivo de configuração.
+  # Adiciona a senha ao arquivo de configuração do Redis, ativando a autenticação.
   echo "requirepass $redis_password" >>/etc/redis/redis.conf
-  # Salva a senha em um arquivo seguro que apenas o root pode ler.
+  # Salva a senha em um arquivo separado para fácil consulta pelo administrador.
   echo "$redis_password" >/etc/redis/redis.password
+  # Define permissões restritas ao arquivo, para que apenas o usuário root possa lê-lo.
   chmod 600 /etc/redis/redis.password
 
   # --- Finalização ---
+  # Informa ao usuário que o serviço será habilitado e reiniciado.
   log "Habilitando e reiniciando o serviço Redis..."
+  # Habilita o serviço Redis para iniciar automaticamente com o sistema.
   systemctl enable redis-server
+  # Reinicia o serviço Redis para aplicar todas as novas configurações.
   systemctl restart redis-server
 
+  # Exibe um aviso importante para o usuário sobre a senha gerada.
   log "------------------------- ATENÇÃO: SENHA GERADA -------------------------"
   log "Uma senha segura para o Redis foi gerada aleatoriamente."
   log "Ela foi salva no arquivo: /etc/redis/redis.password"
   log "-------------------------------------------------------------------------"
+  # Informa que a instalação desta parte foi concluída.
   log "Instalação do Redis concluída."
 }
 
 #######################################################################
-# PARTE 15: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 15: INSTALAÇÃO DO ELASTICSEARCH
+#######################################################################
+
+# Função auxiliar para configurar o acesso de rede do Elasticsearch.
+configure_elasticsearch_network() {
+  # Exibe a mensagem de início da função.
+  log "Configurando o acesso de rede para o Elasticsearch..."
+  # Declara uma variável local para a escolha do usuário.
+  local choice
+
+  # Exibe um menu de opções para o usuário.
+  echo
+  log "----------------- ACESSO AO ELASTICSEARCH -----------------"
+  log "Como o Elasticsearch será acessado?"
+  log "[1] Apenas localmente (localhost) - RECOMENDADO E SEGURO."
+  log "[2] Remotamente (de outro servidor) - AVANÇADO. Requer proteção de firewall."
+  log "-----------------------------------------------------------"
+  # Lê a escolha do usuário.
+  read -p ">> Escolha uma opção [padrão: 1]: " choice
+
+  # Se o usuário escolheu a opção '2' para acesso remoto...
+  if [[ "$choice" == "2" ]]; then
+    # Informa ao usuário que a configuração remota será aplicada.
+    log "Configurando Elasticsearch para acesso remoto..."
+    # Altera a configuração 'network.host' para '0.0.0.0', fazendo o serviço escutar em todas as interfaces de rede.
+    sed -i 's/#network.host: .*/network.host: 0.0.0.0/' /etc/elasticsearch/elasticsearch.yml
+
+    # Verifica se o firewall UFW está ativo.
+    if systemctl is-active --quiet ufw; then
+      # Se estiver ativo, libera a porta padrão do Elasticsearch (9200).
+      log "Abrindo a porta 9200/tcp no firewall UFW..."
+      ufw allow 9200/tcp
+    fi
+
+    # Exibe um aviso de segurança crítico sobre a exposição da porta.
+    echo
+    log "------------ AVISO DE SEGURANÇA CRÍTICO ------------"
+    log "O Elasticsearch agora está acessível de QUALQUER IP na porta 9200."
+    log "É SUA RESPONSABILIDADE proteger o acesso a esta porta usando"
+    log "um firewall de nuvem ou regras de UFW/Iptables para liberar"
+    log "APENAS os IPs dos seus servidores de aplicação."
+    log "--------------------------------------------------------"
+    echo
+  else
+    # Se a escolha não for '2', mantém a configuração padrão e segura de acesso local.
+    log "Mantendo a configuração de acesso local (localhost). Nenhuma alteração de rede necessária."
+  fi
+}
+
+# Função principal da Parte 15.
+install_elasticsearch() {
+  # Exibe a mensagem de início da função.
+  log "Iniciando a instalação do Elasticsearch 8.x..."
+
+  # --- Instalação da Dependência ---
+  # Informa ao usuário que as dependências serão instaladas.
+  log "Instalando dependências necessárias..."
+  # Instala o pacote 'apt-transport-https' para permitir o acesso a repositórios via HTTPS.
+  apt-get install -qq -y apt-transport-https
+
+  # --- Configuração do Repositório Elastic ---
+  # Informa ao usuário que o repositório será adicionado.
+  log "Adicionando o repositório oficial do Elasticsearch..."
+  # Baixa e salva a chave GPG do repositório da forma segura.
+  wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+  # Adiciona o repositório oficial do Elasticsearch 8.x, associando-o à chave GPG.
+  echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | tee /etc/apt/sources.list.d/elastic-8.x.list
+
+  # --- Instalação do Pacote ---
+  # Informa ao usuário que a instalação está começando.
+  log "Atualizando a lista de pacotes e instalando o Elasticsearch..."
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
+  apt-get update -qq
+  # Instala o pacote do Elasticsearch.
+  apt-get install -qq -y elasticsearch
+
+  # --- Travamento da Versão ---
+  # Informa ao usuário que a versão será travada.
+  log "Travando a versão do Elasticsearch para evitar atualizações automáticas indesejadas..."
+  # O comando 'hold' impede que o pacote seja atualizado pelo 'apt-get upgrade'.
+  apt-mark hold elasticsearch
+
+  # --- Configuração de Rede ---
+  # Chama a função auxiliar para perguntar ao usuário como configurar o acesso à rede.
+  configure_elasticsearch_network
+
+  # --- Configuração e Finalização ---
+  # Informa ao usuário que o serviço será habilitado e iniciado.
+  log "Habilitando e reiniciando o serviço Elasticsearch..."
+  # Habilita o serviço para iniciar automaticamente com o sistema.
+  systemctl enable elasticsearch
+  # Reinicia o serviço para aplicar as configurações.
+  systemctl restart elasticsearch
+
+  # Informa ao usuário que o script está aguardando o serviço iniciar.
+  log "Aguardando o Elasticsearch iniciar (pode levar alguns minutos)..."
+  # Pausa o script por 60 segundos para dar tempo ao Elasticsearch de iniciar completamente.
+  sleep 60
+
+  # Declara uma variável local para a senha.
+  local elastic_password
+  # Executa o comando para resetar (e obter) a senha gerada automaticamente para o usuário 'elastic'.
+  elastic_password=$(/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -b | grep -oP 'Password: \K.*')
+
+  # Exibe um aviso importante para o usuário com a senha gerada.
+  log "------------------------- ATENÇÃO: SENHA GERADA -------------------------"
+  log "Uma senha segura para o usuário 'elastic' foi gerada automaticamente."
+  log "Usuário: elastic"
+  log "Senha: $elastic_password"
+  log "Guarde esta senha em um local seguro!"
+  log "-------------------------------------------------------------------------"
+  # Informa que a instalação desta parte foi concluída.
+  log "Instalação do Elasticsearch concluída."
+}
+
+#######################################################################
+# PARTE 16: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
@@ -1456,6 +1575,10 @@ fi
 
 if [[ "$INSTALL_REDIS" == "S" ]]; then
   install_redis
+fi
+
+if [[ "$INSTALL_ELASTICSEARCH" == "S" ]]; then
+  install_elasticsearch
 fi
 # (As partes de instalação do Apache, etc., virão aqui)
 
