@@ -18,7 +18,7 @@ ADMIN_EMAIL="seu-email-aqui@exemplo.com"
 
 CPU_CORES=$(nproc)
 LOAD_ALERT_THRESHOLD=${ALERTA_MANUAL:-$((CPU_CORES * 2))}
-CURRENT_LOAD=$(cut -d' ' -f1 < /proc/loadavg | cut -d. -f1)
+CURRENT_LOAD=$(cut -d' ' -f1 </proc/loadavg | cut -d. -f1)
 HOSTNAME=$(hostname)
 
 # Só continua se a carga atual for maior ou igual ao limite.

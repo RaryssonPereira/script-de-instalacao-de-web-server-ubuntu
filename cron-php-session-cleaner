@@ -1,5 +1,6 @@
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-# Limpa sessões expiradas do PHP a cada 2 horas
-# - Compatível com PHP 7.x, 8.x — limpa arquivos expirados nas pastas de sessão conforme gc_maxlifetime
-0 */2 * * * root /usr/lib/php/sessionclean
+# Limpa arquivos de sessão do PHP expirados a cada 30 minutos (nos minutos 9 e 39 de cada hora).
+# Isso ajuda a manter o diretório /tmp limpo e a economizar inodes.
+9,39 * * * * root /usr/lib/php/sessionclean >/dev/null 2>&1

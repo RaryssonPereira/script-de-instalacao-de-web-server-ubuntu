@@ -22,7 +22,8 @@
 # - Parte 11: Instalação do Nginx.
 # - Parte 12: Instalação do Apache.
 # - Parte 13: Instalação do PHP.
-# - Parte 14: Criação do script de backup de configurações.
+# - Parte 14: Instalação do Redis.
+# - Parte 15: Criação do script de backup de configurações.
 #
 #######################################################################
 
@@ -670,6 +671,12 @@ deploy_utility_scripts() {
   cp verificar-certificados-ssl.sh /usr/local/bin/verificar-certificados-ssl.sh
   chmod +x /usr/local/bin/verificar-certificados-ssl.sh
 
+  # --- Cron para Apagar Arquivos de Sessão do PHP dentro da Pasta /tmp ---
+  log "Adicionando cron para apagar arquivos de sessão do PHP dentro da pasta /tmp (cron-php-session-cleaner)..."
+  #
+  cp cron-php-session-cleaner /etc/cron.d/cron-php-session-cleaner
+  chmod 644 /etc/cron.d/cron-php-session-cleaner
+
   log "Scripts e crons adicionados e agendados com sucesso."
 }
 
@@ -1045,6 +1052,16 @@ install_apache() {
   apt-get update -qq
   apt-get install -qq -y python3-certbot-apache
 
+  # --- Hardening de Segurança (Apache Ultimate Bad Bot Blocker) ---
+  log "Instalando o Apache Ultimate Bad Bot Blocker para proteção adicional..."
+  # Baixa o script de instalação do Bad Bot Blocker.
+  wget https://raw.githubusercontent.com/mitchellkrogza/apache-ultimate-bad-bot-blocker/master/install-ngxblocker -O /usr/local/sbin/install-ngxblocker
+  # Torna o script de instalação executável.
+  chmod +x /usr/local/sbin/install-ngxblocker
+  # Executa o instalador a partir de seu próprio diretório para garantir o funcionamento correto.
+  (cd /usr/local/sbin/ && /usr/local/sbin/install-ngxblocker -x)
+  log "Bad Bot Blocker para Apache instalado."
+
   # --- Configuração do Primeiro Projeto (Opcional) ---
   # Declara variáveis locais para o nome do projeto e do domínio.
   local project_name
@@ -1104,11 +1121,190 @@ install_apache() {
 # PARTE 13: INSTALAÇÃO DO PHP
 #######################################################################
 install_php() {
+  # Exibe a mensagem de início da função.
   log "Iniciando a instalação do PHP..."
+
+  # --- Seleção da Versão ---
+  # Declara variáveis locais para a escolha e a versão do PHP.
+  local version_choice
+  local php_version
+
+  # Exibe um menu de opções para o usuário.
+  log "----------------- SELEÇÃO DA VERSÃO DO PHP -----------------"
+  log "Escolha a versão do PHP a ser instalada (via PPA de Ondřej Surý)."
+  log "[1] 8.3 - Versão mais recente."
+  log "[2] 8.2 - Versão estável e amplamente compatível."
+  log "[3] 7.4 - Versão legada para compatibilidade máxima."
+  log "------------------------------------------------------------"
+  # Lê a escolha do usuário.
+  read -p ">> Escolha uma opção [padrão: 2]: " version_choice
+
+  # Trata a escolha do usuário com uma estrutura 'case'.
+  case "$version_choice" in
+  1) php_version="8.3" ;;
+  3) php_version="7.4" ;;
+  *) php_version="8.2" ;;
+  esac
+
+  # --- Instalação dos Pacotes ---
+  # Informa ao usuário que o repositório será adicionado.
+  log "Adicionando repositório PPA para o PHP (Ondřej Surý)..."
+  # Adiciona o repositório PPA para ter acesso a múltiplas versões do PHP.
+  add-apt-repository -y ppa:ondrej/php
+  # Atualiza a lista de pacotes para incluir os do novo repositório.
+  apt-get update -qq
+
+  # Informa ao usuário que a instalação dos pacotes está começando.
+  log "Instalando PHP $php_version e extensões comuns..."
+  # Instala o PHP-FPM, a linha de comando (CLI) e uma lista de extensões essenciais.
+  apt-get install -qq -y \
+    php$php_version-fpm \
+    php$php_version-cli \
+    php$php_version-mysql \
+    php$php_version-curl \
+    php$php_version-gd \
+    php$php_version-mbstring \
+    php$php_version-xml \
+    php$php_version-zip \
+    php$php_version-bcmath \
+    php$php_version-intl \
+    php$php_version-soap \
+    php$php_version-opcache \
+    php$php_version-igbinary \
+    php$php_version-imagick \
+    php$php_version-gmp \
+    php$php_version-sockets
+
+  # --- Otimização e Hardening do PHP ---
+  # Define os caminhos para os arquivos de configuração para facilitar a manutenção.
+  local php_ini_path="/etc/php/$php_version/fpm/php.ini"
+  local fpm_pool_conf="/etc/php/$php_version/fpm/pool.d/www.conf"
+
+  # Informa ao usuário que as configurações de recursos serão otimizadas.
+  log "Otimizando configurações de recursos no php.ini..."
+  # Aumenta o limite de tamanho para upload de arquivos.
+  sed -i "s/upload_max_filesize = .*/upload_max_filesize = 100M/" "$php_ini_path"
+  # Aumenta o limite de tamanho para dados de postagem (formulários).
+  sed -i "s/post_max_size = .*/post_max_size = 100M/" "$php_ini_path"
+  # Aumenta o limite de memória que um script pode consumir.
+  sed -i "s/memory_limit = .*/memory_limit = 256M/" "$php_ini_path"
+  # Aumenta o tempo máximo de execução de um script.
+  sed -i "s/max_execution_time = .*/max_execution_time = 300/" "$php_ini_path"
+
+  # Informa ao usuário que o pool do PHP-FPM será otimizado.
+  log "Otimizando configurações de performance e estabilidade no pool do PHP-FPM..."
+  # Define o número máximo de processos filhos que podem ser criados.
+  sed -i "s/^;?pm.max_children = .*/pm.max_children = 180/" "$fpm_pool_conf"
+  # Define o número de processos filhos criados na inicialização.
+  sed -i "s/^;?pm.start_servers = .*/pm.start_servers = 25/" "$fpm_pool_conf"
+  # Define o número mínimo de processos ociosos.
+  sed -i "s/^;?pm.min_spare_servers = .*/pm.min_spare_servers = 10/" "$fpm_pool_conf"
+  # Define o número máximo de processos ociosos.
+  sed -i "s/^;?pm.max_spare_servers = .*/pm.max_spare_servers = 30/" "$fpm_pool_conf"
+  # Define um timeout para matar scripts que travaram.
+  sed -i "s/^;?request_terminate_timeout = .*/request_terminate_timeout = 60s/" "$fpm_pool_conf"
+  # Altera o PHP-FPM para escutar em uma porta TCP, para compatibilidade com o Nginx.
+  sed -i "s/listen = .*/listen = 127.0.0.1:9000/" "$fpm_pool_conf"
+
+  # Informa ao usuário que as configurações de "autocura" serão ativadas.
+  log "Otimizando configurações de reinício de emergência no php-fpm.conf..."
+  # Define o número de falhas de processos filhos que acionará um reinício.
+  sed -i "s/;emergency_restart_threshold = .*/emergency_restart_threshold = 10/" "/etc/php/$php_version/fpm/php-fpm.conf"
+  # Define o intervalo de tempo para o gatilho de reinício.
+  sed -i "s/;emergency_restart_interval = .*/emergency_restart_interval = 1m/" "/etc/php/$php_version/fpm/php-fpm.conf"
+  # Define um timeout para os processos filhos responderem a um sinal de parada.
+  sed -i "s/;process_control_timeout = .*/process_control_timeout = 10s/" "/etc/php/$php_version/fpm/php-fpm.conf"
+
+  # Informa ao usuário que as configurações de segurança serão aplicadas.
+  log "Aplicando hardening de segurança (disable_functions e sessões)..."
+  # Desativa funções do PHP que são potencialmente perigosas se um site for comprometido.
+  sed -i 's/disable_functions = .*/disable_functions = show_source, system, shell_exec, passthru, exec, phpinfo, popen, proc_open, symlink/g' "$php_ini_path"
+  # Define o diretório para salvar os arquivos de sessão.
+  sed -i "s/^;session.save_path = .*/session.save_path = \"/tmp\"/" "$php_ini_path"
+  # Aumenta o tempo de vida das sessões.
+  sed -i "s/session.gc_maxlifetime = .*/session.gc_maxlifetime = 28800/" "$php_ini_path"
+  # Altera o nome do cookie de sessão.
+  sed -i "s/session.name = .*/session.name = SESSID/" "$php_ini_path"
+
+  # --- Otimização de Limite de Arquivos Abertos ---
+  # Informa ao usuário que o limite de arquivos será aumentado.
+  log "Aumentando o limite de arquivos abertos para o PHP-FPM..."
+  # Cria um diretório de override para o serviço do PHP-FPM.
+  mkdir -p "/etc/systemd/system/php${php_version}-fpm.service.d/"
+  # Cria um arquivo de configuração para definir um novo limite de arquivos abertos.
+  cat >"/etc/systemd/system/php${php_version}-fpm.service.d/override.conf" <<EOF
+[Service]
+LimitNOFILE=65535
+EOF
+  # Recarrega a configuração do systemd para ler o novo arquivo de override.
+  systemctl daemon-reload
+
+  # Reinicia o serviço PHP-FPM para aplicar todas as novas configurações.
+  systemctl restart "php$php_version-fpm"
+  # Exibe a mensagem de conclusão da função.
+  log "Instalação do PHP $php_version concluída."
 }
 
 #######################################################################
-# PARTE 14: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
+# PARTE 14: INSTALAÇÃO DO REDIS
+#######################################################################
+install_redis() {
+  log "Iniciando a instalação do Redis..."
+
+  # --- Instalação dos Pacotes ---
+  log "Adicionando repositório PPA para o Redis e instalando..."
+  add-apt-repository -y ppa:chris-lea/redis-server
+  apt-get update -qq
+  apt-get install -qq -y redis-server
+
+  # --- Otimização de Memória e Performance ---
+  log "Otimizando a configuração do Redis..."
+  # Calcula 25% da memória RAM total em bytes para usar como limite.
+  local total_mem_kb
+  total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  local max_memory_bytes
+  max_memory_bytes=$((total_mem_kb * 1024 / 4))
+
+  # Adiciona as configurações de limite de memória e política de evicção.
+  echo "maxmemory $max_memory_bytes" >>/etc/redis/redis.conf
+  echo "maxmemory-policy allkeys-lru" >>/etc/redis/redis.conf
+
+  # --- Otimização de Performance do Kernel (THP) ---
+  log "Desabilitando Transparent Huge Pages para otimização do Redis..."
+  # Desabilita o THP na sessão atual.
+  echo never >/sys/kernel/mm/transparent_hugepage/enabled
+  # Instala o sysfsutils para tornar a mudança permanente.
+  apt-get install -qq -y sysfsutils
+  # Adiciona a configuração ao sysfs.conf para que seja aplicada em cada boot.
+  echo "kernel/mm/transparent_hugepage/enabled = never" >>/etc/sysfs.conf
+
+  # --- Hardening de Segurança ---
+  log "Aplicando hardening de segurança ao Redis..."
+  # Garante que o Redis só escute em localhost.
+  sed -i "s/^bind 127.0.0.1 ::1/bind 127.0.0.1/" /etc/redis/redis.conf
+  # Gera uma senha aleatória e segura.
+  local redis_password
+  redis_password=$(openssl rand -base64 32)
+  # Adiciona a senha ao arquivo de configuração.
+  echo "requirepass $redis_password" >>/etc/redis/redis.conf
+  # Salva a senha em um arquivo seguro que apenas o root pode ler.
+  echo "$redis_password" >/etc/redis/redis.password
+  chmod 600 /etc/redis/redis.password
+
+  # --- Finalização ---
+  log "Habilitando e reiniciando o serviço Redis..."
+  systemctl enable redis-server
+  systemctl restart redis-server
+
+  log "------------------------- ATENÇÃO: SENHA GERADA -------------------------"
+  log "Uma senha segura para o Redis foi gerada aleatoriamente."
+  log "Ela foi salva no arquivo: /etc/redis/redis.password"
+  log "-------------------------------------------------------------------------"
+  log "Instalação do Redis concluída."
+}
+
+#######################################################################
+# PARTE 15: CRIAÇÃO DO SCRIPT DE BACKUP DE CONFIGURAÇÕES
 #######################################################################
 setup_config_backup_script() {
   # Exibe a mensagem de início da função.
@@ -1256,6 +1452,10 @@ fi
 
 if [[ "$INSTALL_PHP" == "S" ]]; then
   install_php
+fi
+
+if [[ "$INSTALL_REDIS" == "S" ]]; then
+  install_redis
 fi
 # (As partes de instalação do Apache, etc., virão aqui)
 
